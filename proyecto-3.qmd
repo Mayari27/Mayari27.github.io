@@ -2,8 +2,8 @@
 title: "Conflictividad y Movilizaciones en Ecuador: Un Análisis de ACLED"
 author: "Mayari Tapia"
 date: "2025"
-image: "mapa_calor_ecuador.png"
-description: "Modelado estadístico de eventos de violencia y protesta utilizando regresiones de Poisson, Binomial Negativa y Logística."
+image: "descarga.png"
+description: "Modelado estadístico de eventos de conflicto y protesta utilizando regresiones de Poisson, Binomial Negativa y Logística."
 categories: [Estadística Inferencial, ACLED, R, Sociología]
 format: 
   html:

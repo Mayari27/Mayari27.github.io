@@ -2,7 +2,7 @@
 title: "Disparidad Étnica y alfabetismo en el Ecuador"
 author: "Mayari Tapia"
 date: "2025"
-image: "grafico_analfabetismo.png" 
+image: "page_1_social_preview.png" 
 description: "Análisis del analfabetismo y etnia usando datos de ENEMDU 2018-2024."
 categories: [R, Estadística, Ciencias Sociales]
 format: 
