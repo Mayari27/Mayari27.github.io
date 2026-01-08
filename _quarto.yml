@@ -1,0 +1,32 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Análisis Cuantitativo para Preguntas Sociales"
+  description: "Portafolio de proyectos en ciencias sociales"
+  
+  navbar:
+    background: "primary"
+    left:
+      - href: index.qmd
+        text: Inicio
+      - href: projects/index.qmd
+        text: Proyectos
+      - about.qmd
+    right:
+      - icon: github
+        href: https://github.com/Mayari27
+      
+  page-footer:
+    center: "© 2024 - Hecho con R y Quarto"
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+    
+execute:
+  warning: false
+  message: false

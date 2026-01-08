@@ -1,0 +1,32 @@
+---
+title: "Portafolio de Análisis Social"
+subtitle: "Proyectos de investigación cuantitativa"
+description: "Explora mis proyectos de análisis de datos"
+---
+
+# Bienvenido {.hero}
+
+Transformo datos en historias comprensibles para entender fenómenos sociales.
+
+## 📊 Proyectos Destacados
+
+### [Análisis de Desigualdad Económica](/projects/desigualdad.qmd)
+Estudio del coeficiente Gini en América Latina (2010-2023)
+
+**Tecnologías:** R, ggplot2, Panel Data
+
+### [Patrones de Votación](/projects/elecciones.qmd)
+Análisis espacial de comportamiento electoral
+
+**Tecnologías:** R, Leaflet, Spatial Analysis
+
+## 🛠️ Tecnologías que Uso
+
+- **R y RStudio** para análisis estadístico
+- **Quarto** para reportes reproducibles
+- **ggplot2** para visualizaciones
+- **Git/GitHub** para control de versiones
+
+---
+
+*Última actualización: `r format(Sys.Date(), "%d/%m/%Y")`*

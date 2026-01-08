@@ -1,0 +1,134 @@
+---
+title: "Disparidad Etnica y alfabetismo en el Ecuador"
+author: "Mayari Tapia"
+format: 
+  html:
+    output-file: "index"
+editor: visual
+---
+
+## Contexto del Estudio
+
+Este análisis busca examinar las disparidades étnicas en los niveles de educación en Ecuador, utilizando datos tabulados (en Excel) de la Encuesta Nacional de Empleo, Desempleo y Subempleo (ENEMDU) para el período 2018-2024.
+
+#### Metodología
+
+Fuente de datos: Tabulados anuales ENEMDU 2024 (INEC)
+
+Período de estudio: 2018-2024
+
+Grupos étnicos analizados: Indígena, Afroecuatoriano, Montubio, Mestizo, Blanco.
+
+Herramientas: R, tidyverse, ggplot2 y readxl.
+
+##### 1. Instalación y Carga de Paquetes
+
+```{r}
+# Verificar e instalar paquetes si es necesario
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("readxl")) install.packages("readxl")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("survey")) install.packages("survey")
+if (!require("ggplot2")) install.packages("ggplot2")
+
+# Cargar las librerías
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(survey)
+library(ggplot2)
+
+```
+
+##### 2. Carga de Datos ENEMDU
+
+```{r}
+# NOTA: Actualiza estas rutas con las ubicaciones reales de tus archivos
+
+# Datos de Educación
+educacion1 <- read_excel("C:/Users/Valen/Downloads/02 ENEMDU_Anual_2024_Tabulados_Educación.xlsx", 
+                         sheet = "3. Características", 
+                         range = "A9:N69")
+View(educacion1)
+
+# Confirmar carga
+cat("Datos cargados exitosamente:\n")
+cat("  Educación:", nrow(educacion1), "filas,", ncol(educacion1), "columnas\n")
+```
+
+##### 3. Preparación de Datos
+
+```{r}
+# Renombrar columnas del dataset de educación
+df_educacion <- educacion1 %>% 
+  rename(
+    Periodo = 1,
+    Indicadores = 2
+  )
+
+# Definir grupos étnicos para el análisis
+columnas_etnia <- c("Indígena", "Afroecuatoriano", "Montubio", "Mestizo", "Blanco")
+```
+
+##### 4. Filtración y selección de datos
+
+```{r}
+# Filtrar solo datos de analfabetismo
+df_analfabetismo <- df_educacion %>%
+  filter(Indicadores == "Tasa de analfabetismo") %>%
+  select(Periodo, all_of(columnas_etnia))
+
+# Transformar a formato largo
+df_etnia_largo <- df_analfabetismo %>%
+  pivot_longer(
+    cols = all_of(columnas_etnia),
+    names_to = "Grupo_Etnico",
+    values_to = "Tasa_Analfabetismo"
+  )
+
+# Convertir periodo a factor
+df_etnia_largo$Periodo <- as.factor(df_etnia_largo$Periodo)
+
+# Mostrar resultados
+head(df_etnia_largo)
+```
+
+##### 5. Gráfico de Disparidad Étnica
+
+```{r}
+ggplot(df_etnia_largo, aes(x = Grupo_Etnico, y = Tasa_Analfabetismo)) +
+  geom_boxplot(aes(fill = Grupo_Etnico), alpha = 0.7, outlier.shape = NA) +
+  geom_point(aes(color = Periodo),
+             position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8),
+             size = 3) +
+  labs(
+    title = "Disparidad Étnica en la Tasa de Analfabetismo",
+    subtitle = "Distribución histórica por grupo étnico (2018-2024)",
+    y = "Tasa de Analfabetismo (%)",
+    x = "Grupo Étnico",
+    fill = "Grupo Étnico",
+    color = "Periodo"
+  ) +
+  scale_fill_brewer(palette = "Pastel2") +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12)
+  )
+```
+
+##### 6. Algunos análisis
+
+-   Estancamiento: En casi todos los grupos, las cajas (que representan el promedio y la dispersión) son bastante estrechas. Esto indica que no ha habido una mejora significativa en 6 años. El problema es estructural y las soluciones actuales no están logrando reducir las tasas de forma acelerada.
+
+-   El "Salto" Indígena: Se observa una dispersión mayor en el grupo indígena. Los puntos de 2021 y 2022 (morado y rosa) muestran una ligera caída, pero los puntos de 2023 y 2024 vuelven a subir a los niveles más altos. Esto podría sugerir que factores externos (como la pandemia o crisis económicas) golpean mucho más fuerte a estas comunidades.
+
+-   Población Indígena y Montubia: Son los grupos más vulnerables. La tasa de analfabetismo en la población indígena oscila entre el 16% y casi el 20%, lo que representa una cifra hasta 4 veces mayor que la de los grupos Mestizo o Blanco.
+
+-   Población Mestiza y Blanca: Presentan las tasas más bajas y estables (por debajo del 5%). Esto sugiere que las políticas educativas históricas han beneficiado desproporcionadamente a los centros urbanos o grupos no minoritarios.
+
+-   Blancos: Es curioso notar un "valor atípico" (outlier) hacia abajo en 2024 (punto amarillo). Esto podría deberse a un cambio en la recolección de datos o un avance muy puntual en ese año para ese grupo.
+
+Nota final: Si bien se pudo lograr algunas inferencias con los datos mas actuales que ofrece el INEC, valdria la pena expandir la base de datos con la que se trabajo, con datos antiguos de las mismas variables en un futuro para una comprension mas completa y extendida.

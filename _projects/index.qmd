@@ -1,0 +1,14 @@
+---
+title: "Todos los Proyectos"
+---
+
+# Mis Proyectos
+
+## 📊 Análisis de Datos Sociales
+
+1. [Proyecto 1: Análisis Exploratorio](proyecto-1.qmd)
+2. [Proyecto 2: Visualización Avanzada](proyecto-2.qmd)
+
+---
+
+*Más proyectos en desarrollo...*

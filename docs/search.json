@@ -1,0 +1,30 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Portafolio de Análisis Social",
+    "section": "",
+    "text": "Transformo datos en historias comprensibles para entender fenómenos sociales.\n\n\n\n\nEstudio del coeficiente Gini en América Latina (2010-2023)\nTecnologías: R, ggplot2, Panel Data\n\n\n\nAnálisis espacial de comportamiento electoral\nTecnologías: R, Leaflet, Spatial Analysis\n\n\n\n\n\nR y RStudio para análisis estadístico\nQuarto para reportes reproducibles\nggplot2 para visualizaciones\nGit/GitHub para control de versiones\n\n\nÚltima actualización: r format(Sys.Date(), \"%d/%m/%Y\")"
+  },
+  {
+    "objectID": "index.html#proyectos-destacados",
+    "href": "index.html#proyectos-destacados",
+    "title": "Portafolio de Análisis Social",
+    "section": "",
+    "text": "Estudio del coeficiente Gini en América Latina (2010-2023)\nTecnologías: R, ggplot2, Panel Data\n\n\n\nAnálisis espacial de comportamiento electoral\nTecnologías: R, Leaflet, Spatial Analysis"
+  },
+  {
+    "objectID": "index.html#tecnologías-que-uso",
+    "href": "index.html#tecnologías-que-uso",
+    "title": "Portafolio de Análisis Social",
+    "section": "",
+    "text": "R y RStudio para análisis estadístico\nQuarto para reportes reproducibles\nggplot2 para visualizaciones\nGit/GitHub para control de versiones\n\n\nÚltima actualización: r format(Sys.Date(), \"%d/%m/%Y\")"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this site\n\n1 + 1\n\n[1] 2"
+  }
+]
