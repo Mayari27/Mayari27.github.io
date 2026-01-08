@@ -2,7 +2,7 @@
 title: "Escolaridad en Ecuador: Brechas de Género y Nivel Socioeconómico"
 author: "Mayari Tapia"
 date: "2025"
-image: "brecha_276.png"
+image: "images/brecha_276.png"
 description: "Un análisis de los años promedio de escolaridad comparando género y niveles de ingreso (2018-2024)."
 categories: [R, Género, Economía, Ciencias Sociales]
 format: 
