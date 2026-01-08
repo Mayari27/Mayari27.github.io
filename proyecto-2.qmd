@@ -1,3 +1,5 @@
 ---
-title: "2"
+title: "Mi Segundo Gran Proyecto"
+description: "Breve descripción de qué trata este análisis."
+categories: [Análisis, 2024]
 ---
