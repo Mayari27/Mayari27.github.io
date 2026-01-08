@@ -1,16 +1,199 @@
 ---
-title: "Escolaridad en Ecuador: Brechas de Género y Nivel Socioeconómico"
+title: "Conflictividad y Movilizaciones en Ecuador: Un Análisis de ACLED"
 author: "Mayari Tapia"
 date: "2025"
-image: "grafico_escolaridad.png" # Para la miniatura de la galería
-description: "Un análisis de los años promedio de escolaridad comparando género y niveles de ingreso (2018-2024)."
-categories: [R, Género, Economía, Ciencias Sociales]
+image: "mapa_calor_ecuador.png"
+description: "Modelado estadístico de eventos de violencia y protesta utilizando regresiones de Poisson, Binomial Negativa y Logística."
+categories: [Estadística Inferencial, ACLED, R, Sociología]
 format: 
   html:
-    code-fold: true      # Permite ocultar/mostrar el código con un clic
-    code-tools: true     # Agrega un menú para ver el código fuente completo
-    toc: true            # Tabla de contenidos lateral
+    code-fold: true
+    code-tools: true
+    toc: true
     toc-depth: 3
-    code-copy: true      
-    highlight-style: ayu 
+    highlight-style: ayu
+editor: 
+  markdown: 
+    wrap: 72
 ---
+
+## Contexto del Proyecto
+
+Este estudio utiliza datos de **ACLED** (Armed Conflict Location & Event
+Data Project) para analizar las dinámicas de movilización (protestas y
+conflictos) en Ecuador. A diferencia de estudios previos, aquí aplicamos
+modelos econométricos para entender qué factores (como la densidad
+poblacional o la ubicación geográfica) disparan la frecuencia y la
+intensidad de la violencia política.
+
+#### Metodología
+
+-   **Dataset:** Movilizaciones Ecuador (ACLED).
+-   **Modelos:** Regresión de Poisson, Binomial Negativa y Regresión
+    Logística.
+-   **Librerías principales:** `MASS`, `tidyverse`, `ggeffects`, y
+    `leaflet` para visualización geoespacial.
+
+##### 1. Instalación y Carga de Paquetes
+
+Para replicar este análisis, es necesario instalar librerías
+especializadas en modelos estadísticos y visualización de efectos.
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+# Lista de paquetes necesarios
+paquetes <- c("tidyverse", "readxl", "MASS", "broom", "ggeffects", "leaflet", "leaflet.extras")
+
+# Instalación automática si no están presentes
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(char = paquetes)
+
+library(tidyverse)
+library(readxl)
+library(MASS)
+library(broom)
+library(ggeffects)
+library(leaflet)
+library(leaflet.extras)
+```
+
+##### 2. Carga y Preparación de Datos
+
+```{r}
+# Carga del dataset desde el directorio local
+ecuador_movilizaciones <- read_excel("C:/Users/Valen/Downloads/Ecuador Movilizaciones.xlsx", 
+                                     sheet = "Hoja2", 
+                                     range = "A1:M5773")
+
+# Limpieza básica
+ecuador_movilizaciones <- ecuador_movilizaciones %>%
+  filter(!is.na(EVENTS), !is.na(POPULATION_EXPOSURE))
+```
+
+#### 1er Análisis: Frecuencia de Eventos (Poisson vs Binomial Negativa)
+
+Evaluamos si la población expuesta y el tipo de evento influyen en la
+cantidad de sucesos. Dado que los datos de conflicto suelen presentar
+mucha variabilidad, comparamos dos modelos de conteo.
+
+```{r}
+# Modelo de Poisson
+modelo_poisson <- glm(EVENTS ~ POPULATION_EXPOSURE + EVENT_TYPE, 
+                      data = ecuador_movilizaciones, family = "poisson")
+
+# Modelo Binomial Negativo (para corregir sobredispersión)
+modelo_nb <- glm.nb(EVENTS ~ POPULATION_EXPOSURE + EVENT_TYPE, 
+                    data = ecuador_movilizaciones)
+
+# Comparación de modelos
+AIC(modelo_poisson, modelo_nb)
+```
+
+Descubrimiento: El Modelo Binomial Negativo presenta un AIC mucho menor,
+lo que demuestra que la frecuencia de eventos en Ecuador tiene una alta
+dispersión que el modelo de Poisson simple no logra capturar.
+
+#### 2do Análisis: Impacto de las Variables (Incidence Rate Ratio)
+
+Visualizamos los coeficientes del modelo para identificar qué tipos de
+eventos "empujan" al alza la conflictividad.
+
+```{r}
+# Limpieza de coeficientes para visualización
+coef_clean <- tidy(modelo_nb, conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = gsub("EVENT_TYPE|POPULATION_EXPOSURE", "", term))
+
+ggplot(coef_clean, aes(x = estimate, y = reorder(term, estimate), color = estimate > 1)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("TRUE" = "#2E8B57", "FALSE" = "#CD5C5C")) +
+  labs(title = "Impacto en la Frecuencia de Eventos (IRR)",
+       subtitle = "Valores a la derecha de 1 aumentan la frecuencia esperada",
+       x = "Ratio de Tasas de Incidencia", y = "Variable") +
+  theme_minimal()
+```
+
+#### 3er Análisis: Geoespacialidad y Riesgo Logístico
+
+```{r}
+# Mapa de calor
+mapa_data <- ecuador_movilizaciones %>% filter(!is.na(CENTROID_LATITUDE))
+
+leaflet(mapa_data) %>%
+  addTiles() %>%
+  addHeatmap(lng = ~CENTROID_LONGITUDE, lat = ~CENTROID_LATITUDE, 
+             intensity = ~EVENTS, blur = 20, max = 0.05, radius = 15)
+```
+
+```{r}
+# Regresión Logística: Probabilidad de Violencia
+ecuador_movilizaciones$es_violento <- ifelse(
+  ecuador_movilizaciones$EVENT_TYPE %in% c("Riots", "Violence against civilians", "Explosions/Remote violence"), 1, 0
+)
+
+modelo_logistico <- glm(es_violento ~ POPULATION_EXPOSURE + ADMIN1, 
+                        data = ecuador_movilizaciones, family = binomial(link = "logit"))
+
+# Visualización de la curva logística (Referencia: Pichincha)
+datos_pred <- data.frame(
+  POPULATION_EXPOSURE = seq(min(ecuador_movilizaciones$POPULATION_EXPOSURE), 
+                            max(ecuador_movilizaciones$POPULATION_EXPOSURE), length.out = 100),
+  ADMIN1 = "Pichincha"
+)
+datos_pred$prob <- predict(modelo_logistico, newdata = datos_pred, type = "response")
+
+ggplot(datos_pred, aes(x = POPULATION_EXPOSURE, y = prob)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  labs(title = "Curva de Probabilidad de Violencia",
+       subtitle = "A medida que aumenta la población, aumenta el riesgo de conflicto violento",
+       x = "Población Expuesta", y = "Probabilidad de Violencia") +
+  theme_minimal()
+```
+
+#### 3. Algunos análisis
+
+-   El modelo binomial negativo (modelo_nb) es superior al de Poisson.
+    La evidencia es el valor de AIC significativamente menor (17,797 vs
+    19,280).
+
+**Explicacion:** Esto confirma estadísticamente que los eventos de
+conflicto en Ecuador presentan sobredispersión. Es decir, la violencia
+no ocurre de forma aleatoria y constante, sino que tiende a agruparse en
+"brotes" o clústeres geográficos y temporales que el modelo de Poisson
+no puede captar.
+
+-   Los eventos de "Violence against civilians" (Violencia contra
+    civiles) y "Protests" (Protestas) tienen un Ratio de Tasas de
+    Incidencia (IRR) muy por encima de 1.0. Esto significa que estos son
+    los tipos de eventos más frecuentes y con mayor peso en el dataset
+    de ACLED.
+
+-   El indicador para "Explosions/Remote violence" está por debajo de
+    1.0 (en rojo). Inferencia: Estos eventos son significativamente
+    menos frecuentes o "atípicos" en la dinámica de movilización del
+    país comparados con la protesta social directa.
+
+-   Los eventos de "Riots" (Disturbios) tocan la línea del 1.0 con sus
+    intervalos de confianza, lo que sugiere que su impacto en la
+    frecuencia general es menos predictible o estadísticamente menos
+    claro que las protestas puras.
+
+-   Existe una relación logística clara: a mayor población expuesta,
+    mayor probabilidad de violencia.
+
+-   La curva sube de forma pronunciada desde el inicio. Se infiere que
+    en zonas con baja población, la probabilidad de que un evento sea
+    violento empieza cerca del 30% (0.3), pero en zonas densamente
+    pobladas (cercanas a los 2 millones de personas), la probabilidad de
+    violencia se dispara por encima del 95% (0.95).
+
+**Conclusión Sociológica**: Esto sugiere que en Ecuador, la escala de
+las movilizaciones urbanas masivas actúa como un catalizador de la
+violencia política; el anonimato de las masas o la presión sobre las
+fuerzas del orden en grandes ciudades eleva drásticamente el riesgo de
+que una protesta pacífica se torne violenta.
