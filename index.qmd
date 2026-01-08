@@ -3,7 +3,7 @@ title: "Disparidad Étnica y alfabetismo en el Ecuador"
 author: "Mayari Tapia"
 date: "2025"
 image: "grafico_analfabetismo.png" 
-description: "Análisis del analfabetismo usando datos de ENEMDU 2018-2024."
+description: "Análisis del analfabetismo y etnia usando datos de ENEMDU 2018-2024."
 categories: [R, Estadística, Ciencias Sociales]
 format: 
   html:
@@ -129,14 +129,14 @@ ggplot(df_etnia_largo, aes(x = Grupo_Etnico, y = Tasa_Analfabetismo)) +
 
 ##### 6. Algunos análisis
 
--   Estancamiento: En casi todos los grupos, las cajas (que representan el promedio y la dispersión) son bastante estrechas. Esto indica que no ha habido una mejora significativa en 6 años. El problema es estructural y las soluciones actuales no están logrando reducir las tasas de forma acelerada.
+-   En casi todos los grupos, las cajas (que representan el promedio y la dispersión) son bastante estrechas. Esto indica que no ha habido una mejora significativa en 6 años. El problema es estructural y las soluciones actuales no están logrando reducir las tasas de forma acelerada.
 
--   El "Salto" Indígena: Se observa una dispersión mayor en el grupo indígena. Los puntos de 2021 y 2022 (morado y rosa) muestran una ligera caída, pero los puntos de 2023 y 2024 vuelven a subir a los niveles más altos. Esto podría sugerir que factores externos (como la pandemia o crisis económicas) golpean mucho más fuerte a estas comunidades.
+-   Se observa una dispersión mayor en el grupo indígena. Los puntos de 2021 y 2022 (morado y rosa) muestran una ligera caída, pero los puntos de 2023 y 2024 vuelven a subir a los niveles más altos. Esto podría sugerir que factores externos (como la pandemia o crisis económicas) golpean mucho más fuerte a estas comunidades.
 
--   Población Indígena y Montubia: Son los grupos más vulnerables. La tasa de analfabetismo en la población indígena oscila entre el 16% y casi el 20%, lo que representa una cifra hasta 4 veces mayor que la de los grupos Mestizo o Blanco.
+-   La población Indígena y Montubia son los grupos más vulnerables. La tasa de analfabetismo en la población indígena oscila entre el 16% y casi el 20%, lo que representa una cifra hasta 4 veces mayor que la de los grupos Mestizo o Blanco.
 
--   Población Mestiza y Blanca: Presentan las tasas más bajas y estables (por debajo del 5%). Esto sugiere que las políticas educativas históricas han beneficiado desproporcionadamente a los centros urbanos o grupos no minoritarios.
+-   La población Mestiza y Blanca presentan las tasas más bajas y estables (por debajo del 5%). Esto sugiere que las políticas educativas históricas han beneficiado desproporcionadamente a los centros urbanos o grupos no minoritarios.
 
--   Blancos: Es curioso notar un "valor atípico" (outlier) hacia abajo en 2024 (punto amarillo). Esto podría deberse a un cambio en la recolección de datos o un avance muy puntual en ese año para ese grupo.
+-   En los Blancos es curioso notar un "valor atípico" (outlier) hacia abajo en 2024 (punto amarillo). Esto podría deberse a un cambio en la recolección de datos o un avance muy puntual en ese año para ese grupo.
 
 Nota final: Si bien se pudo lograr algunas inferencias con los datos mas actuales que ofrece el INEC, valdria la pena expandir la base de datos con la que se trabajo, con datos antiguos de las mismas variables en un futuro para una comprension mas completa y extendida.
