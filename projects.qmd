@@ -1,0 +1,7 @@
+---
+title: "Portafolio de Proyectos"
+listing:
+  contents: 
+    - "proyecto-*.qmd"
+  type: grid
+---

@@ -11,8 +11,8 @@ website:
     left:
       - href: index.qmd
         text: Inicio
-      - href: projects/index.qmd  # Asegúrate que la carpeta se llame 'projects'
-        text: Proyectos
+      - href: projects.qmd
+        text: Más Proyectos
     right:
       - icon: github
         href: https://github.com/Mayari27
