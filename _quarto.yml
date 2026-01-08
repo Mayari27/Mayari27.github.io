@@ -11,9 +11,8 @@ website:
     left:
       - href: index.qmd
         text: Inicio
-      - href: projects/index.qmd
+      - href: projects/index.qmd  # Asegúrate que la carpeta se llame 'projects'
         text: Proyectos
-      - about.qmd
     right:
       - icon: github
         href: https://github.com/Mayari27
@@ -23,7 +22,7 @@ website:
 
 format:
   html:
-    theme: cosmo
+    theme: flatly
     css: styles.css
     toc: true
     
