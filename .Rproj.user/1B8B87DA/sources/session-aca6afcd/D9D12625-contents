@@ -1,18 +1,10 @@
 ---
-title: "Disparidad Étnica y alfabetismo en el Ecuador"
+title: "Disparidad Etnica y alfabetismo en el Ecuador"
 author: "Mayari Tapia"
-date: "2025"
-image: "grafico_analfabetismo.png" # Para la miniatura de la galería
-description: "Análisis del analfabetismo usando datos de ENEMDU 2018-2024."
-categories: [R, Estadística, Ciencias Sociales]
 format: 
   html:
-    code-fold: true      # Esto permite ocultar/mostrar el código con un clic
-    code-tools: true     # Agrega un menú para ver el código fuente completo
-    toc: true            # Tabla de contenidos lateral para navegar el paso a paso
-    toc-depth: 3
-    code-copy: true      # Permite que la gente copie tu código fácilmente
-    highlight-style: ayu # Estilo de colores profesional para el código
+    output-file: "index"
+editor: visual
 ---
 
 ## Contexto del Estudio
