@@ -19,12 +19,12 @@ editor:
 
 ## Contexto del Proyecto
 
-Este estudio utiliza datos de **ACLED** (Armed Conflict Location & Event
-Data Project) para analizar las dinámicas de movilización (protestas y
-conflictos) en Ecuador. A diferencia de estudios previos, aquí aplicamos
-modelos econométricos para entender qué factores (como la densidad
-poblacional o la ubicación geográfica) disparan la frecuencia y la
-intensidad de la violencia política.
+Este análisis utiliza datos de **ACLED** (Armed Conflict Location &
+Event Data Project) para analizar las dinámicas de movilización
+(protestas y conflictos) en Ecuador. A diferencia de estudios previos,
+aquí aplicamos modelos econométricos para entender qué factores (como la
+densidad poblacional o la ubicación geográfica) disparan la frecuencia y
+la intensidad de la violencia política.
 
 #### Metodología
 
