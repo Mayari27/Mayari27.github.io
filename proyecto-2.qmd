@@ -49,7 +49,7 @@ library(ggplot2)
 ```{r}
 #| message: false
 # NOTA: Asegúrate de que el archivo esté en la carpeta de tu proyecto
-df_educacion <- read_excel("C:/Users/Valen/Downloads/02 ENEMDU_Anual_2024_Tabulados_Educación.xlsx", 
+df_educacion <- read_excel("data/ENEMDU_2024_Educacion.xlsx", 
                          sheet = "3. Características", 
                          range = "A9:N69") %>% 
   rename(Periodo = 1, Indicadores = 2)

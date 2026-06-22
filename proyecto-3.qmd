@@ -28,11 +28,11 @@ la intensidad de la violencia política.
 
 #### Metodología
 
--   **Dataset:** Movilizaciones Ecuador (ACLED).
--   **Modelos:** Regresión de Poisson, Binomial Negativa y Regresión
-    Logística.
--   **Librerías principales:** `MASS`, `tidyverse`, `ggeffects`, y
-    `leaflet` para visualización geoespacial.
+- **Dataset:** Movilizaciones Ecuador (ACLED).
+- **Modelos:** Regresión de Poisson, Binomial Negativa y Regresión
+  Logística.
+- **Librerías principales:** `MASS`, `tidyverse`, `ggeffects`, y
+  `leaflet` para visualización geoespacial.
 
 ##### 1. Instalación y Carga de Paquetes
 
@@ -64,7 +64,7 @@ library(leaflet.extras)
 
 ```{r}
 # Carga del dataset desde el directorio local
-ecuador_movilizaciones <- read_excel("C:/Users/Valen/Downloads/Ecuador Movilizaciones.xlsx", 
+ecuador_movilizaciones <- read_excel("data/Ecuador_Movilizaciones.xlsx", 
                                      sheet = "Hoja2", 
                                      range = "A1:M5773")
 
@@ -157,9 +157,9 @@ ggplot(datos_pred, aes(x = POPULATION_EXPOSURE, y = prob)) +
 
 #### 3. Algunos análisis
 
--   El modelo binomial negativo (modelo_nb) es superior al de Poisson.
-    La evidencia es el valor de AIC significativamente menor (17,797 vs
-    19,280).
+- El modelo binomial negativo (modelo_nb) es superior al de Poisson. La
+  evidencia es el valor de AIC significativamente menor (17,797 vs
+  19,280).
 
 **Explicacion:** Esto confirma estadísticamente que los eventos de
 conflicto en Ecuador presentan sobredispersión. Es decir, la violencia
@@ -167,30 +167,29 @@ no ocurre de forma aleatoria y constante, sino que tiende a agruparse en
 "brotes" o clústeres geográficos y temporales que el modelo de Poisson
 no puede captar.
 
--   Los eventos de "Violence against civilians" (Violencia contra
-    civiles) y "Protests" (Protestas) tienen un Ratio de Tasas de
-    Incidencia (IRR) muy por encima de 1.0. Esto significa que estos son
-    los tipos de eventos más frecuentes y con mayor peso en el dataset
-    de ACLED.
+- Los eventos de "Violence against civilians" (Violencia contra civiles)
+  y "Protests" (Protestas) tienen un Ratio de Tasas de Incidencia (IRR)
+  muy por encima de 1.0. Esto significa que estos son los tipos de
+  eventos más frecuentes y con mayor peso en el dataset de ACLED.
 
--   El indicador para "Explosions/Remote violence" está por debajo de
-    1.0 (en rojo). Inferencia: Estos eventos son significativamente
-    menos frecuentes o "atípicos" en la dinámica de movilización del
-    país comparados con la protesta social directa.
+- El indicador para "Explosions/Remote violence" está por debajo de 1.0
+  (en rojo). Inferencia: Estos eventos son significativamente menos
+  frecuentes o "atípicos" en la dinámica de movilización del país
+  comparados con la protesta social directa.
 
--   Los eventos de "Riots" (Disturbios) tocan la línea del 1.0 con sus
-    intervalos de confianza, lo que sugiere que su impacto en la
-    frecuencia general es menos predictible o estadísticamente menos
-    claro que las protestas puras.
+- Los eventos de "Riots" (Disturbios) tocan la línea del 1.0 con sus
+  intervalos de confianza, lo que sugiere que su impacto en la
+  frecuencia general es menos predictible o estadísticamente menos claro
+  que las protestas puras.
 
--   Existe una relación logística clara: a mayor población expuesta,
-    mayor probabilidad de violencia.
+- Existe una relación logística clara: a mayor población expuesta, mayor
+  probabilidad de violencia.
 
--   La curva sube de forma pronunciada desde el inicio. Se infiere que
-    en zonas con baja población, la probabilidad de que un evento sea
-    violento empieza cerca del 30% (0.3), pero en zonas densamente
-    pobladas (cercanas a los 2 millones de personas), la probabilidad de
-    violencia se dispara por encima del 95% (0.95).
+- La curva sube de forma pronunciada desde el inicio. Se infiere que en
+  zonas con baja población, la probabilidad de que un evento sea
+  violento empieza cerca del 30% (0.3), pero en zonas densamente
+  pobladas (cercanas a los 2 millones de personas), la probabilidad de
+  violencia se dispara por encima del 95% (0.95).
 
 **Conclusión Sociológica**: Esto sugiere que en Ecuador, la escala de
 las movilizaciones urbanas masivas actúa como un catalizador de la

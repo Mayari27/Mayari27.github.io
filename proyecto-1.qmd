@@ -54,7 +54,7 @@ library(ggplot2)
 # NOTA: Actualiza estas rutas con las ubicaciones reales de tus archivos
 
 # Datos de Educación
-educacion1 <- read_excel("C:/Users/Valen/Downloads/02 ENEMDU_Anual_2024_Tabulados_Educación.xlsx", 
+educacion1 <- read_excel("data/ENEMDU_2024_Educacion.xlsx", 
                          sheet = "3. Características", 
                          range = "A9:N69")
 View(educacion1)
