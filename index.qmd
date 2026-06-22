@@ -1,9 +1,10 @@
 ---
 title: "Mayari Tapia"
-subtitle: "Análisis de datos · Sociología cuantitativa · Datos abiertos"
-image: "images/page_1_social_preview.png"
+subtitle: "Análisis de datos · Sociología cuantitativa · Ecuador"
+image: "images/foto.jpg"
 about:
   template: trestles
+  image-shape: round
   links:
     - icon: github
       text: GitHub
@@ -19,7 +20,7 @@ format:
     toc: false
 ---
 
-Soy analista de datos con formación en sociología, enfocada en la intersección entre **investigación social**, **datos abiertos** y **herramientas computacionales**. Trabajo en el ecosistema de datos abiertos en Ecuador.
+Soy analista de datos con formación en sociología, enfocada en la intersección entre **investigación social**, **datos abiertos** y **herramientas computacionales** aplicadas al contexto ecuatoriano.
 
 Me apasiona transformar datos complejos en narrativas visuales que impulsen la toma de decisiones y el desarrollo social.
 
@@ -27,25 +28,20 @@ Me apasiona transformar datos complejos en narrativas visuales que impulsen la t
 
 ## Herramientas
 
-| Área | Herramientas |
-|---|---|
-| Programación | R (Tidyverse, Shiny, ggplot2), Python |
-| Recolección de datos | KoboToolbox, ACLED, ENEMDU/INEC |
-| Visualización | Shiny, Leaflet, ggplot2, Plotly |
-| Entornos | Git, GitHub, Quarto |
+R · Python · Tidyverse · ggplot2 · Shiny · Leaflet · Plotly · KoboToolbox · ACLED · ENEMDU/INEC · Git · GitHub · Quarto
 
 ---
 
 ## Proyectos destacados
 
 ### Conflictividad en Ecuador (ACLED)
-Dashboard Shiny interactivo para visualizar patrones espaciales y temporales de conflicto político en Ecuador (2018–2025).
-🔗 [Ver aplicación](https://huggingface.co/spaces/Seth77/Conflicto) · [Ver análisis](proyecto-3.qmd)
+Dashboard Shiny interactivo para visualizar patrones espaciales y temporales de conflicto político en Ecuador (2018–2025).  
+[Ver aplicación](https://huggingface.co/spaces/Seth77/Conflicto) · [Ver análisis](proyecto-3.qmd)
 
 ### Disparidad étnica y alfabetismo (ENEMDU)
-Análisis de brechas en tasas de analfabetismo por grupo étnico usando datos del INEC (2018–2024).
-🔗 [Ver análisis](proyecto-1.qmd)
+Análisis de brechas en tasas de analfabetismo por grupo étnico usando datos del INEC (2018–2024).  
+[Ver análisis](proyecto-1.qmd)
 
 ### Escolaridad, género y nivel socioeconómico (ENEMDU)
-Exploración de brechas de género y quintiles de ingreso en años promedio de escolaridad.
-🔗 [Ver análisis](proyecto-2.qmd)
+Exploración de brechas de género y quintiles de ingreso en años promedio de escolaridad.  
+[Ver análisis](proyecto-2.qmd)
