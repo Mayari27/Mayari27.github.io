@@ -34,7 +34,7 @@ R · Python · Tidyverse · ggplot2 · Shiny · Leaflet · Plotly · KoboToolbox
 
 ### Conflictividad en Ecuador (ACLED)
 Dashboard Shiny interactivo para visualizar patrones espaciales y temporales de conflicto político en Ecuador (2018–2025).  
-[Ver aplicación](https://huggingface.co/spaces/Seth77/Conflicto) · [Ver análisis](proyecto-3.qmd)
+[Ver aplicación](https://huggingface.co/spaces/Seth77/Conflicto)
 
 ### Disparidad étnica y alfabetismo (ENEMDU)
 Análisis de brechas en tasas de analfabetismo por grupo étnico usando datos del INEC (2018–2024).  
