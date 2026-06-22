@@ -1,0 +1,23 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Mayari Tapia",
+    "section": "",
+    "text": "Soy analista de datos con formación en sociología, enfocada en la intersección entre investigación social, datos abiertos y herramientas computacionales aplicadas al contexto ecuatoriano.\nMe apasiona transformar datos complejos en narrativas visuales que impulsen la toma de decisiones y el desarrollo social."
+  },
+  {
+    "objectID": "index.html#herramientas",
+    "href": "index.html#herramientas",
+    "title": "Mayari Tapia",
+    "section": "Herramientas",
+    "text": "Herramientas\nR · Python · Tidyverse · ggplot2 · Shiny · Leaflet · Plotly · KoboToolbox · ACLED · ENEMDU/INEC · Git · GitHub · Quarto"
+  },
+  {
+    "objectID": "index.html#proyectos-destacados",
+    "href": "index.html#proyectos-destacados",
+    "title": "Mayari Tapia",
+    "section": "Proyectos destacados",
+    "text": "Proyectos destacados\n\nConflictividad en Ecuador (ACLED)\nDashboard Shiny interactivo para visualizar patrones espaciales y temporales de conflicto político en Ecuador (2018–2025).\nVer aplicación\n\n\nDisparidad étnica y alfabetismo (ENEMDU)\nAnálisis de brechas en tasas de analfabetismo por grupo étnico usando datos del INEC (2018–2024).\nVer análisis\n\n\nEscolaridad, género y nivel socioeconómico (ENEMDU)\nExploración de brechas de género y quintiles de ingreso en años promedio de escolaridad.\nVer análisis"
+  }
+]
