@@ -19,7 +19,7 @@ format:
     toc: false
 ---
 
-Soy analista de datos con formación en sociología, enfocada en la intersección entre **investigación social**, **datos abiertos** y **herramientas computacionales**. Trabajo en [Datalat](https://datalat.org), organización de datos abiertos en Ecuador.
+Soy analista de datos con formación en sociología, enfocada en la intersección entre **investigación social**, **datos abiertos** y **herramientas computacionales**. Trabajo en el ecosistema de datos abiertos en Ecuador.
 
 Me apasiona transformar datos complejos en narrativas visuales que impulsen la toma de decisiones y el desarrollo social.
 
