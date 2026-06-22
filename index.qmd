@@ -1,10 +1,8 @@
 ---
 title: "Mayari Tapia"
 subtitle: "Análisis de datos · Sociología cuantitativa · Ecuador"
-image: "images/foto.jpg"
 about:
   template: trestles
-  image-shape: round
   links:
     - icon: github
       text: GitHub
