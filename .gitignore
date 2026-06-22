@@ -1,2 +1,16 @@
+# Archivos de sesión local de R
+.RData
+.Rhistory
+.Rproj.user/
+
+# Proyecto de RStudio
+*.Rproj
+
+# Output de Quarto
 /.quarto/
-.Rproj.user
+*_files/
+*_cache/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
