@@ -1,0 +1,2528 @@
+# ==============================================================================
+# ACLED Ecuador - App Shiny
+# ==============================================================================
+
+# Carga de paquetes ------------------------------------------------------------
+paquetes <- c(
+  "shiny", "bslib", "bsicons",
+  "tidyverse", "lubridate", "scales",
+  "plotly", "leaflet", "sf",
+  "rnaturalearth", "rnaturalearthdata",
+  "visNetwork", "htmltools",
+  "stringi", "glue",
+  "jsonlite", "shinyjs",
+  "fabletools", "zoo", "readr"
+)
+
+suppressPackageStartupMessages({
+  library(shiny)
+  library(bslib)
+  library(bsicons)
+  library(tidyverse)
+  library(lubridate)
+  library(scales)
+  library(plotly)
+  library(leaflet)
+  library(sf)
+  library(rnaturalearth)
+  library(rnaturalearthdata)
+  library(visNetwork)
+  library(htmltools)
+  library(stringi)
+  library(glue)
+  library(jsonlite)
+  library(shinyjs)
+  library(fabletools)
+  library(zoo)
+})
+
+
+options(shiny.autoreload = TRUE)
+shiny::devmode(TRUE)
+
+# ==============================================================================
+# PALETA Y HELPERS
+# ==============================================================================
+col_navy       <- "#0d1f2d"
+col_fondo      <- "#f8f9fb"
+col_tarjeta    <- "#ffffff"
+col_borde      <- "#eaecf0"
+col_texto      <- "#2d3748"
+col_gris       <- "#546e7a"
+col_teal       <- "#00b894"
+col_teal_lt    <- "#7de8cc"
+col_teal_bg    <- "#e0faf4"
+col_teal_dk    <- "#0f7a5a"
+col_coral      <- "#e17055"
+col_coral_bg   <- "#fdecea"
+col_coral_dk   <- "#b04030"
+col_indigo     <- "#4361ee"
+col_indigo_bg  <- "#eef1ff"
+col_indigo_lt  <- "#b0bcf8"
+col_indigo_dk  <- "#2338b0"
+col_amber      <- "#f0a500"
+col_amber_bg   <- "#fff8e1"
+col_magenta    <- "#c2185b"
+col_magenta_bg <- "#fce7f3"
+
+paleta_app <- c(col_teal, col_coral, col_indigo, col_magenta, col_amber, col_gris)
+caption_acled <- "Fuente: ACLED (Armed Conflict Location & Event Data Project) · acleddata.com | Ecuador, 2018-2025 | Elaborado por: Mayari Tapia"
+meses_abrev_es <- c("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+
+sin_tildes <- function(x) {
+  x |>
+    stringi::stri_trans_general("Latin-ASCII") |>
+    str_to_lower() |>
+    str_squish()
+}
+
+fecha_mes_es <- function(x) {
+  ifelse(is.na(x), NA_character_, paste(meses_abrev_es[lubridate::month(x)], lubridate::year(x)))
+}
+
+primer_valor <- function(x, fallback = NA_character_) {
+  x <- x |> as.character() |> na.omit()
+  if (!length(x)) fallback else x[[1]]
+}
+
+lighten_col <- function(hex, amount = 0.4) {
+  v <- col2rgb(hex) / 255
+  v <- v + (1 - v) * amount
+  rgb(v[1], v[2], v[3])
+}
+
+hacer_paleta_dinamica <- function(datos, columna, colores = paleta_app) {
+  niveles <- datos |>
+    pull({{ columna }}) |>
+    as.character() |>
+    na.omit() |>
+    unique() |>
+    sort()
+  if (!length(niveles)) return(setNames(character(), character()))
+  setNames(colorRampPalette(colores)(length(niveles)), niveles)
+}
+
+plotly_solo_tooltip <- function(p) {
+  p |>
+    layout(
+      dragmode = FALSE,
+      xaxis = list(fixedrange = TRUE),
+      yaxis = list(fixedrange = TRUE)
+    ) |>
+    config(
+      displayModeBar = TRUE,
+      displaylogo = FALSE,
+      scrollZoom = FALSE,
+      doubleClick = FALSE,
+      showAxisDragHandles = FALSE,
+      showAxisRangeEntryBoxes = FALSE,
+      modeBarButtonsToRemove = c(
+        "zoom2d", "pan2d", "select2d", "lasso2d",
+        "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"
+      )
+    )
+}
+
+tema_acled <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.background = element_rect(fill = col_tarjeta, color = NA),
+      panel.background = element_rect(fill = col_tarjeta, color = NA),
+      panel.grid.major = element_line(color = col_borde, linewidth = 0.45),
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(color = col_navy, face = "bold", size = base_size + 3),
+      plot.subtitle = element_text(color = col_gris, size = base_size, margin = margin(b = 8)),
+      plot.caption = element_text(color = col_gris, size = base_size - 2, hjust = 0),
+      axis.title = element_text(color = col_texto, face = "bold"),
+      axis.text = element_text(color = col_gris),
+      legend.title = element_text(color = col_texto, face = "bold"),
+      legend.text = element_text(color = col_texto),
+      strip.text = element_text(color = col_navy, face = "bold"),
+      plot.margin = margin(12, 14, 12, 12)
+    )
+}
+
+theme_set(tema_acled())
+
+kpi_card <- function(valor, etiqueta, ayuda = NULL,
+                     color_val = col_navy,
+                     color_bg = col_tarjeta,
+                     color_borde = col_borde) {
+  div(
+    class = "kpi-card",
+    style = glue("background:{color_bg};border-color:{color_borde};"),
+    div(class = "kpi-value", style = glue("color:{color_val};"), valor),
+    div(class = "kpi-label", etiqueta),
+    if (!is.null(ayuda)) div(class = "kpi-help", ayuda)
+  )
+}
+
+render_texto_narrativo <- function(texto) {
+  if (is.null(texto)) return(NULL)
+  if (!is.character(texto)) return(texto)
+  txt <- paste(texto, collapse = " ")
+  txt <- htmltools::htmlEscape(txt)
+  txt <- gsub("\\*\\*([^*]+)\\*\\*", "<strong>\\1</strong>", txt, perl = TRUE)
+  txt <- gsub("\\*([^*]+)\\*", "<em>\\1</em>", txt, perl = TRUE)
+  txt <- gsub("\n", "<br>", txt, fixed = TRUE)
+  HTML(txt)
+}
+
+.ui_id <- local({
+  i <- 0L
+  function(prefix = "ui") {
+    i <<- i + 1L
+    paste0(prefix, "_", i)
+  }
+})
+
+bloque_desplegable <- function(contenido, clase_contenido, etiqueta = "Leer más") {
+  id <- .ui_id("interp")
+  div(
+    class = "narrative-toggle-wrap",
+    tags$button(
+      type = "button",
+      class = "btn-narrative-toggle collapsed",
+      `data-bs-toggle` = "collapse",
+      `data-bs-target` = paste0("#", id),
+      `aria-expanded` = "false",
+      `aria-controls` = id,
+      bsicons::bs_icon("chevron-down"),
+      tags$span(etiqueta)
+    ),
+    div(
+      id = id,
+      class = "collapse narrative-collapse",
+      div(class = clase_contenido, contenido)
+    )
+  )
+}
+
+bloque_narrativo <- function(texto, tipo = c("teal", "coral", "indigo")) {
+  tipo <- match.arg(tipo)
+  clase <- if (tipo == "teal") "narrative" else paste("narrative", tipo)
+  bloque_desplegable(render_texto_narrativo(texto), clase, "Leer más")
+}
+
+bloque_contexto <- function(texto, etiqueta = "Leer más") {
+  bloque_desplegable(render_texto_narrativo(texto), "viz-context", etiqueta)
+}
+
+bloque_descriptivo <- function(texto) {
+  div(class = "viz-desc", render_texto_narrativo(texto))
+}
+
+bloque_narrativo_fijo <- function(texto, tipo = c("teal", "coral", "indigo")) {
+  tipo <- match.arg(tipo)
+  clase <- if (tipo == "teal") "narrative" else paste("narrative", tipo)
+  div(class = clase, render_texto_narrativo(texto))
+}
+
+chip_ui <- function(texto) {
+  div(class = "chip", texto)
+}
+
+btn_reset <- function(id, label = "Ver todo el periodo") {
+  actionButton(id, label, class = "btn-reset")
+}
+
+visual_card <- function(title, body, caption = caption_acled, desc = NULL, note = NULL) {
+  if (is.null(desc)) {
+    desc <- "Esta visualización presenta las variables principales del gráfico y su distribución general en el periodo analizado."
+  }
+  card(
+    card_header(tags$span(class = "viz-title", title)),
+    card_body(
+      if (!is.null(desc)) bloque_descriptivo(desc),
+      if (!is.null(note)) bloque_contexto(note),
+      body,
+      div(class = "viz-caption", caption)
+    )
+  )
+}
+
+separador <- function() {  
+  tags$hr(style = "border:none; border-top:1px solid #eaecf0; margin:20px 0;")
+}
+
+ajustar_mapa_ecuador <- function(mapa, datos_mapa = NULL) {
+  if (!is.null(datos_mapa) && nrow(datos_mapa)) {
+    lon <- datos_mapa$longitude[is.finite(datos_mapa$longitude)]
+    lat <- datos_mapa$latitude[is.finite(datos_mapa$latitude)]
+    if (length(lon) && length(lat)) {
+      return(
+        mapa |>
+          fitBounds(
+            lng1 = min(lon, na.rm = TRUE),
+            lat1 = min(lat, na.rm = TRUE),
+            lng2 = max(lon, na.rm = TRUE),
+            lat2 = max(lat, na.rm = TRUE)
+          )
+      )
+    }
+  }
+  
+  mapa |>
+    fitBounds(lng1 = -92.2, lat1 = -5.2, lng2 = -75.0, lat2 = 1.8)
+}
+
+capa_ecuador <- local({
+  ecuador_sf <- NULL
+  function() {
+    if (is.null(ecuador_sf)) {
+      ecuador_sf <<- tryCatch(ne_states(country = "Ecuador", returnclass = "sf"), error = function(e) NULL)
+    }
+    ecuador_sf
+  }
+})
+
+agregar_referencia_ecuador <- function(mapa) {
+  ecuador_sf <- capa_ecuador()
+  if (is.null(ecuador_sf)) return(mapa)
+  
+  mapa |>
+    addPolygons(
+      data = ecuador_sf,
+      fillColor = "#f4f7fb",
+      fillOpacity = 0.55,
+      color = "#d7e5f3",
+      weight = 0.7,
+      opacity = 0.9,
+      smoothFactor = 0.5
+    )
+}
+
+# ==============================================================================
+# DATOS DE POBLACION (para normalización en Violencia)
+# ==============================================================================
+pob_ecu <- tibble(
+  admin1 = c("Guayas", "Pichincha", "Manabí", "Los Ríos", "Azuay", "Santa Elena",
+             "Santo Domingo de los Tsáchilas", "Esmeraldas", "El Oro", "Loja",
+             "Tungurahua", "Chimborazo", "Cotopaxi", "Imbabura", "Cañar", "Carchi",
+             "Bolívar", "Sucumbíos", "Orellana", "Napo", "Pastaza",
+             "Morona Santiago", "Zamora Chinchipe", "Galápagos"),
+  poblacion = c(4391923, 3228233, 1562079, 921016, 881394, 401178, 458580, 643654,
+                715751, 511151, 589583, 524004, 488716, 476257, 281396, 186869,
+                209933, 230503, 161338, 133705, 114202, 196534, 120416, 33042)
+)
+
+# ==============================================================================
+# DATOS PRINCIPALES
+# ==============================================================================
+datos <- readRDS("datos/acled_ecuador_maestro.rds") |>
+  mutate(
+    event_date = as.Date(event_date),
+    year_month = as.Date(year_month),
+    year = as.integer(year),
+    fatalities = as.numeric(fatalities),
+    latitude = as.numeric(latitude),
+    longitude = as.numeric(longitude),
+    crowd_size = replace_na(as.character(crowd_size), "Sin reporte"),
+    across(c(
+      disorder_type, event_type, sub_event_type, actor1, actor2,
+      assoc_actor_1_tipo, assoc_actor_2_tipo,
+      assoc_actor_1_detalle, assoc_actor_2_detalle,
+      interaction, admin1, day_of_week,
+      nivel_fatalidades, crowd_size
+    ), as.factor)
+  ) |>
+  left_join(pob_ecu, by = "admin1")
+
+meses_es <- c("enero", "febrero", "marzo", "abril", "mayo", "junio",
+              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+dias_es <- c("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
+
+datos <- datos |>
+  mutate(
+    month_name = factor(meses_es[month(event_date)], levels = meses_es, ordered = TRUE),
+    day_of_week_es = factor(dias_es[wday(event_date)],
+                            levels = c("lunes","martes","miércoles","jueves","viernes","sábado","domingo"),
+                            ordered = TRUE),
+    admin1 = factor(admin1)
+  )
+
+# Cargar modelos y tablas auxiliares (con tryCatch para no interrumpir la app si faltan)
+tabla_fc <- tryCatch(
+  readRDS("modelos/tabla_forecast.rds") |>
+    mutate(
+      year_month = as.Date(year_month),
+      lo80 = round(pmax(prediccion * 0.78, 0), 1),
+      hi80 = round(prediccion * 1.22, 1)
+    ),
+  error = function(e) NULL
+)
+metricas_m1 <- tryCatch(readRDS("modelos/metricas_clasificacion.rds"), error = function(e) NULL)
+importancia  <- tryCatch(readRDS("modelos/importancia_variables.rds"),  error = function(e) NULL)
+metricas_series <- tryCatch(readRDS("modelos/metricas_series.rds"),     error = function(e) NULL)
+modelo_fat   <- tryCatch(readRDS("modelos/modelo_fatalidades.rds"),     error = function(e) NULL)
+
+# Paletas 
+paleta_disorder <- hacer_paleta_dinamica(datos, disorder_type, c(col_teal, col_indigo, col_coral))
+paleta_event <- hacer_paleta_dinamica(datos, event_type)
+paleta_sub <- setNames(
+  colorRampPalette(paleta_app)(length(levels(datos$sub_event_type))),
+  levels(datos$sub_event_type)
+)
+paleta_actor1 <- hacer_paleta_dinamica(datos, actor1, c(col_teal, col_teal_dk))
+paleta_actor2 <- hacer_paleta_dinamica(datos, actor2, c(col_coral, col_coral_dk))
+paleta_tipo1 <- hacer_paleta_dinamica(datos, assoc_actor_1_tipo, c(col_indigo, col_indigo_dk))
+paleta_tipo2 <- hacer_paleta_dinamica(datos, assoc_actor_2_tipo, c(col_magenta, col_magenta))
+paleta_detalle1 <- hacer_paleta_dinamica(datos, assoc_actor_1_detalle, c(col_teal_lt, col_teal_dk))
+paleta_detalle2 <- hacer_paleta_dinamica(datos, assoc_actor_2_detalle, c(col_amber, col_amber))
+paleta_interaccion <- hacer_paleta_dinamica(datos, interaction, c(col_indigo, col_teal, col_amber))
+
+tabla_clasificacion_eventos <- function(datos, paleta_disorder) {
+  estructura <- datos |>
+    distinct(disorder_type, event_type, sub_event_type) |>
+    mutate(
+      disorder_type = as.character(disorder_type),
+      event_type = as.character(event_type),
+      sub_event_type = as.character(sub_event_type)
+    ) |>
+    arrange(disorder_type, event_type, sub_event_type)
+  
+  filas <- tagList()
+  
+  for (disorder in unique(estructura$disorder_type)) {
+    bloque_disorder <- estructura |> filter(disorder_type == disorder)
+    color <- paleta_disorder[[disorder]]
+    if (is.null(color) || is.na(color)) color <- col_teal
+    color_disorder_bg <- lighten_col(color, 0.66)
+    color_event_bg <- lighten_col(color, 0.82)
+    color_sub_bg <- lighten_col(color, 0.95)
+    
+    primer_disorder <- TRUE
+    for (evento in unique(bloque_disorder$event_type)) {
+      bloque_evento <- bloque_disorder |> filter(event_type == evento)
+      primer_evento <- TRUE
+      
+      for (subevento in bloque_evento$sub_event_type) {
+        celdas <- list()
+        
+        if (primer_disorder) {
+          celdas <- append(celdas, list(
+            tags$td(
+              rowspan = nrow(bloque_disorder),
+              class = "flow-cell flow-disorder",
+              style = glue("background:{color_disorder_bg};color:{color};"),
+              disorder
+            )
+          ))
+          primer_disorder <- FALSE
+        }
+        
+        if (primer_evento) {
+          celdas <- append(celdas, list(
+            tags$td(
+              rowspan = nrow(bloque_evento),
+              class = "flow-cell flow-event",
+              style = glue("background:{color_event_bg};color:{color};"),
+              evento
+            )
+          ))
+          primer_evento <- FALSE
+        }
+        
+        celdas <- append(celdas, list(
+          tags$td(
+            class = "flow-cell flow-sub",
+            style = glue("background:{color_sub_bg};"),
+            subevento
+          )
+        ))
+        filas <- tagAppendChildren(filas, do.call(tags$tr, celdas))
+      }
+    }
+  }
+  
+  div(
+    class = "flow-accordion",
+    tags$button(
+      type = "button",
+      class = "flow-toggle collapsed",
+      `data-bs-toggle` = "collapse",
+      `data-bs-target` = "#clasificacion_eventos",
+      `aria-expanded` = "false",
+      `aria-controls` = "clasificacion_eventos",
+      bsicons::bs_icon("diagram-3"),
+      tags$span("Ver estructura de clasificacion de eventos"),
+      bsicons::bs_icon("chevron-down", class = "flow-chevron")
+    ),
+    div(
+      id = "clasificacion_eventos",
+      class = "collapse",
+      div(
+        class = "flow-panel",
+        div(class = "flow-intro", "Relacion jerarquica entre las tres variables principales de clasificacion: categoria macro, tipo de evento y subtipo especifico registrado por ACLED."),
+        div(
+          class = "flow-table-wrap",
+          tags$table(
+            class = "flow-table",
+            tags$thead(
+              tags$tr(
+                tags$th("DISORDER_TYPE"),
+                tags$th("EVENT_TYPE"),
+                tags$th("SUB_EVENT_TYPE")
+              )
+            ),
+            tags$tbody(filas)
+          )
+        )
+      )
+    )
+  )
+}
+
+paleta_nivel <- c(
+  "Baja (1)"    = "#fab8a8",
+  "Media (2-3)" = "#e17055",
+  "Alta (4-9)"  = "#b04030",
+  "Masiva (10+)"= "#7a2818"
+)
+ramp_coral <- c("#fdecea", "#fab8a8", "#e17055", "#b04030", "#7a2818")
+
+# Métricas globales
+total_eventos <- nrow(datos)
+total_fatalidades <- sum(datos$fatalities, na.rm = TRUE)
+pct_con_fatal <- mean(datos$fatalities > 0, na.rm = TRUE)
+total_provincias <- n_distinct(datos$admin1)
+roc_auc_val <- if (!is.null(metricas_m1)) metricas_m1 |> filter(.metric == "roc_auc") |> pull(.estimate) |> first() else NA_real_
+f1_val      <- if (!is.null(metricas_m1)) metricas_m1 |> filter(.metric == "f_meas")   |> pull(.estimate) |> first() else NA_real_
+pr_auc_val  <- if (!is.null(metricas_m1)) metricas_m1 |> filter(.metric == "pr_auc")   |> pull(.estimate) |> first() else NA_real_
+actor_mas_letal <- datos |>
+  filter(!is.na(actor1), actor1 != "") |>
+  count(actor1, wt = fatalities, sort = TRUE, name = "fatalidades") |>
+  slice_head(n = 1) |>
+  pull(actor1)
+serie_mensual_total <- datos |> count(year_month, name = "eventos")
+mes_pico_nacional <- serie_mensual_total |> slice_max(eventos, n = 1, with_ties = FALSE)
+disorder_reciente <- datos |>
+  filter(year == max(year, na.rm = TRUE)) |>
+  count(disorder_type, sort = TRUE, name = "eventos") |>
+  slice_head(n = 1) |>
+  pull(disorder_type)
+provincia_mas_activa <- datos |>
+  count(admin1, sort = TRUE, name = "eventos") |>
+  slice_head(n = 1) |>
+  pull(admin1)
+top_vars_modelo <- if (!is.null(importancia)) importancia |>
+  slice_max(Importance, n = 3, with_ties = FALSE) |>
+  pull(Variable) |>
+  as.character() else character(0)
+actores_fatales_choices <- datos |>
+  filter(!is.na(actor1), actor1 != "", fatalities > 0) |>
+  count(actor1, wt = fatalities, sort = TRUE, name = "fatalidades") |>
+  pull(actor1) |>
+  as.character() |>
+  unique()
+
+# ==============================================================================
+# TEXTO REESCRITO SEGÚN DIAGNÓSTICO
+# ==============================================================================
+
+# --- Narrativa de sección expandida ---
+nar_inicio <- paste(
+  "Una herramienta de acceso libre para el análisis del conflicto social en Ecuador,",
+  "construida íntegramente con software de código abierto y datos de ACLED.",
+  "Pensada para investigadores, estudiantes y organizaciones que no requieren licencias",
+  "ni infraestructura especializada."
+)
+
+nar_temporal_1 <- paste(
+  "¿El conflicto sigue un ritmo predecible o reacciona a eventos externos?",
+  "Esta sección pone a prueba esa idea. Las líneas punteadas marcan hitos que, según la teoría de Smelser,",
+  "funcionan como *factores precipitantes*: detonan la tensión acumulada.",
+  "Observa si todas las crisis generan la misma respuesta o si ciertos tipos de conflicto",
+  "son más sensibles a ciertos eventos."
+)
+
+nar_temporal_2 <- paste(
+  "No todos los conflictos se expresan igual.",
+  "Las protestas pacíficas, los disturbios y los enfrentamientos armados tienen **calendarios distintos**",
+  "y lógicas de activación diferentes. Un pico de manifestaciones en octubre no se parece",
+  "a una escalada de violencia política en enero.",
+  "Esta sección descompone esas temporalidades para que puedas identificar",
+  "qué tipo de conflicto domina cada estación del año."
+)
+
+nar_geo <- paste(
+  "El territorio no es un contenedor neutro del conflicto: es una variable explicativa.",
+  "Las mismas condiciones que concentran organizaciones, redes y recursos en ciertos territorios",
+  "también concentran los eventos. Pero volumen no es sinónimo de peligro:",
+  "una provincia puede tener pocas protestas y alta letalidad, o muchos eventos con cero muertos.",
+  "Esta sección separa ambas dimensiones para evitar que el mapa más colorido",
+  "se confunda con el mapa de riesgo."
+)
+
+nar_conflicto <- paste(
+  "Los actores no actúan solos. Las barras ordenan magnitud, pero la verdadera dinámica",
+  "se lee en las redes de interacción. ¿Quién se enfrenta a quién?",
+  "¿Qué actores aparecen juntos sistemáticamente? Las alianzas y las oposiciones revelan",
+  "la estructura del campo conflictivo. Aquí podrás identificar no solo a los protagonistas,",
+  "sino también a los que —aun siendo frecuentes— permanecen en la sombra."
+)
+
+nar_violencia <- paste(
+  "La violencia letal no se distribuye uniformemente.",
+  "Siguiendo la propuesta de Inés Izaguirre de analizar el conflicto social en sus múltiples niveles,",
+  glue("las {format(sum(datos$fatalities, na.rm=TRUE), big.mark=',')} fatalidades del periodo no son solo números: revelan una **transformación estructural del conflicto**"),
+  "donde la muerte se concentra en territorios y actores específicos.",
+  "Comparar totales y tasas por habitante evita conclusiones engañosas entre provincias de distinto tamaño;",
+  "el análisis sistémico exige correlacionar el sistema social, las tensiones generadas y los actores involucrados."
+)
+
+# --- Descripciones visibles mejoradas ---
+desc_inicio_linea_disorder <- paste(
+  "Esta línea de tiempo muestra la fluctuación mensual de los tres tipos de desorden.",
+  "**Cada curva tiene su propio ritmo**: las manifestaciones se disparan en coyunturas políticas visibles,",
+  "mientras la violencia política escala desde 2022 de forma más sostenida.",
+  "Al compararlas podrás ver que el conflicto no es lineal ni uniforme: cambia de naturaleza con el tiempo."
+)
+
+desc_inicio_heatmap_disorder <- paste(
+  "El mapa de calor cruza año y categoría de desorden. Los tonos oscuros señalan alta concentración de eventos.",
+  "Observa que el oscurecimiento no es simultáneo: la violencia política se intensifica en el bloque 2022-2023,",
+  "mientras las manifestaciones tuvieron su pico en 2019. Es una vista rápida de ciclos."
+)
+
+desc_inicio_linea_subtipo <- paste(
+  "Cada línea es una modalidad de acción colectiva (protesta, disturbio, ataque,etc.).",
+  "Identifica cuáles crecen, cuáles se mantienen estables y cuáles desaparecen.",
+  "Verás que la violencia contra civiles emerge como nuevo repertorio desde 2021, cambiando el perfil del conflicto."
+)
+
+desc_inicio_heatmap_evento <- paste(
+  "Este heatmap anual resume la intensidad por tipo de evento.",
+  "Si una fila se oscurece progresivamente, indica una tendencia estructural;",
+  "si solo un año es intenso, apunta a un estallido coyuntural.",
+  "Úsalo para distinguir lo que es estructural de lo que fue episódico."
+)
+
+desc_inicio_linea_subtipo_fino <- paste(
+  "Aquí se detallan sub‑tipos específicos (protesta controlada/intervenida, arrestos, secuestros y desaparición forzada, saqueo y daño a la propiedad, etc.).",
+  "Los disturbios aparecen ahora en dos categorías separadas: Manifestación Violenta y Violencia de Turbas,",
+  "permitiendo distinguir entre movilizaciones que escalan y violencia colectiva espontánea.",
+  "Observa que algunos sub‑tipos como la protesta pacífica son continuos, otros aparecen solo en ciertos años."
+)
+
+desc_inicio_heatmap_subtipo_fino <- paste(
+  "El cruce sub‑tipo × año revela qué repertorios son permanentes y cuáles irrumpen.",
+  "La franja oscura de 'Ataque' en 2023‑2024 es el dato de quiebre más fuerte de todo el periodo.",
+  "Úsalo para identificar la reorganización del conflicto."
+)
+
+desc_temporal_linea_hitos <- paste(
+  "Serie mensual con hitos políticos. Las líneas punteadas marcan momentos clave",
+  "que permiten ver si el conflicto reacciona de inmediato o con rezago.",
+  "Contrasta los picos de cada curva: no todas las crisis afectan por igual a cada tipo de desorden."
+)
+
+desc_temporal_heatmap_anio_mes <- paste(
+  "El heatmap mes × año muestra estacionalidad. Una diagonal clara en ciertos meses",
+  "sugiere patrones estables de conflicto (ej. mayo‑junio).",
+  "Si un mes aparece iluminado solo en un año, es señal de un evento extraordinario, no de estacionalidad."
+)
+
+desc_temporal_dia_semana <- paste(
+  "Frecuencia por día de la semana y tipo de evento. Los días laborables concentran",
+  "acciones organizadas (marchas, huelgas), mientras que el fin de semana suele tener",
+  "más hechos violentos. La diferencia revela la naturaleza del actor dominante en cada franja."
+)
+
+desc_temporal_promedio <- paste(
+  "Promedio histórico mensual. Es la línea base de conflictividad.",
+  "Un mes consistentemente alto indica una tensión estructural latente que se activa estacionalmente,",
+  "más allá de los picos excepcionales."
+)
+
+desc_temporal_apilado <- paste(
+  "Barras apiladas anuales. Muestra cómo cambia la composición del conflicto:",
+  "el desplazamiento de las manifestaciones hacia la violencia política a partir de 2022",
+  "es la transformación más profunda del periodo. Si un color se ensancha año a año, indica una nueva normalidad."
+)
+
+desc_geo_mapa_tipo <- paste(
+  "Mapa de puntos por tipo de evento. La concentración en Sierra Centro y Guayas refleja",
+  "la densidad organizativa. Pero no confundas cantidad con peligrosidad:",
+  "una provincia con menos puntos puede tener mayor letalidad. Contrasta con los mapas de fatalidades",
+  "en la sección Violencia."
+)
+
+desc_geo_mapa_subtipo <- paste(
+  "Desglose por sub‑tipo. Permite ver si una provincia concentra protestas,",
+  "arrestos o saqueos."
+)
+
+desc_geo_coropletico <- paste(
+  "Coroplético de volumen total. Pichincha y Guayas aparecen oscuras por su tamaño poblacional,",
+  "no necesariamente por mayor riesgo. Para una lectura de peligro territorial,",
+  "usa los gráficos normalizados de la sección Violencia."
+)
+
+desc_geo_barras_disorder <- paste(
+  "Perfil de categoría por provincia. Si una provincia tiene más manifestaciones, indica capacidad organizativa;",
+  "si predominan eventos de violencia política, sugiere presencia de actores armados.",
+  "Compara perfiles para entender a cada territorio."
+)
+
+desc_geo_barras_event <- paste(
+  "Desglose de tipo de evento por provincia. La presencia de huelgas y protestas pacíficas revela tejido social;",
+  "la de batallas y explosiones, conflicto armado.",
+  "Útil para detectar qué territorios tienen repertorios de acción institucionalizados y cuáles no."
+)
+
+desc_geo_barras_subevento <- paste(
+  "Sub‑tipos detallados por provincia. Aquí se ven tácticas específicas: bloqueos, marchas, enfrentamientos.",
+  "Permite comparar las estrategias de movilización que diferencian provincias con tradición organizativa",
+  "de aquellas bajo dinámica criminal."
+)
+
+desc_conf_red <- paste(
+  "Red de interacciones Actor 1 – Actor 2. Nodo más grueso = actor más frecuente.",
+  "Observa el núcleo: si un actor sin nombre aparece en el centro, es evidencia directa de opacidad.",
+  "Selecciona un actor con el selector para aislarlo."
+)
+
+desc_conf_pares <- paste(
+  "Pares de actores más frecuentes. El primer lugar (Milicias ‑ Civiles) señala violencia criminal como principal interacción.",
+  "Si encuentras pares que no esperabas, es una alerta de vínculos no obvios. Contrasta con la red."
+)
+
+desc_conf_evol_actor <- paste(
+  "Evolución mensual de un actor seleccionado. Busca patrones: crecimiento sostenido indica consolidación;",
+  "pico y caída, activación coyuntural. Selecciona distintos actores para comparar sus ciclos de protagonismo."
+)
+
+desc_conf_evol_categoria <- paste(
+  "Evolución por sector (Indígena, Sindical, Criminal, etc.). La línea plana alta = presencia continua;",
+  "picos aislados = activación en coyunturas. Compara qué sectores son estructurales y cuáles dependen de ventanas de oportunidad."
+)
+
+desc_conf_red_asociados <- paste(
+  "Red de organizaciones específicas (actores asociados). Muestra alianzas y co‑ocurrencias.",
+  "Si una organización aparece conectada a muchas otras, es un nodo articulador. Ideal para mapear coaliciones."
+)
+
+desc_conf_top_pares <- paste(
+  "Top de interacciones entre organizaciones. Las combinaciones más vistas indican convergencia de agendas",
+  "o reacción a un adversario común. Útil para identificar qué bloques se articulan con mayor frecuencia."
+)
+
+desc_viol_heatmap <- paste(
+  "Mapa de calor de fatalidades por provincia y año. Alterna entre total y tasa por 100k hab.:",
+  "el ranking cambia radicalmente. Provincias pequeñas con alta tasa son más peligrosas para un ciudadano,",
+  "aunque tengan menos muertes absolutas. Usa el filtro para contrastar."
+)
+
+desc_viol_lollipop <- paste(
+  "Fatalidades por sub‑tipo. Observa el primer lugar: generalmente 'Enfrentamiento Armado/Tiroteo',",
+  "aunque no sea el sub‑tipo más frecuente. Esta asimetría revela que el conflicto más mortal",
+  "es a menudo menos visible. Examina qué modalidades producen más muertes."
+)
+
+desc_viol_top_provincias <- paste(
+  "Top 10 provincias más letales según la métrica activa. Si cambias de 'total' a 'tasa',",
+  "Los Ríos puede saltar al primer puesto. Lee siempre con la métrica elegida en mente:",
+  "volumen no es lo mismo que riesgo individual."
+)
+
+desc_viol_comp_actor <- paste(
+  "Compara fatalidades entre Actor 1 (inicia) y Actor 2 (responde).",
+  "La barra más larga para Actor 1 indica quién es mayormente ofensivo;",
+  "si la diferencia es pequeña, la violencia es simétrica. Útil para inferir la dirección del conflicto."
+)
+
+desc_viol_top_actores <- paste(
+  "Top 10 actores con más fatalidades en el rol seleccionado. Busca patrones:",
+  "si el Actor Armado No Identificado lidera en Actor 1, la violencia ofensiva es opaca.",
+  "Si lidera en Actor 2, es blanco recurrente."
+)
+
+desc_viol_sector_actor <- paste(
+  "Agregación por sector (estatal, criminal, indígena...). Excluye 'Otros'.",
+  "Muestra el peso de cada bloque en la letalidad total.",
+  "Observa cuánto depende el total de los Grupos Criminales vs. el Estado."
+)
+
+# --- Textos de "Leer más" con gancho empírico inicial ---
+
+txt_inicio_linea_disorder <- paste(
+  "Observa el comportamiento de las tres líneas: la azul (manifestaciones) presenta dos crestas principales,",
+  "la verde (acontecimientos estratégicos) es más plana y la coral (violencia política) asciende de manera sostenida desde 2022.",
+  "Esta divergencia no es aleatoria.",
+  "Entre 2018 y 2025 la conflictividad ecuatoriana no sigue una trayectoria uniforme.",
+  "Desde la teoría de la **tensión estructural** de Neil Smelser, los picos no son accidentes sino expresiones",
+  "de tensiones acumuladas que los mecanismos habituales del sistema no logran absorber a corto plazo.",
+  "Las **manifestaciones** concentran el volumen y responden a coyunturas de malestar social;",
+  "los **acontecimientos estratégicos** revelan una lógica organizativa continua;",
+  "y la **violencia política**, que gana presencia letal desde 2022, indica una ruptura más profunda",
+  "de los controles sociales. Usa los chips para aislar cada categoría y observar cómo cada tipo de conflicto",
+  "reacciona a distintos momentos de la historia reciente del país."
+)
+
+txt_inicio_heatmap_disorder <- paste(
+  "Fíjate en el recuadro correspondiente a Violencia Política en 2022-2023: es el bloque más oscuro de toda la visualización.",
+  "Eso significa que esos dos años concentran la mayor actividad letal del periodo.",
+  "La intensidad del color marca los momentos de mayor actividad en cada categoría.",
+  "Siguiendo la noción de **ciclos de protesta** de Sidney Tarrow, el oscurecimiento en 2019 para las manifestaciones",
+  "coincide con la apertura de una ventana de oportunidad política (Paro Nacional de octubre),",
+  "mientras que el bloque más intenso en violencia política durante 2022-2023 refleja el cambio de ciclo",
+  "hacia un conflicto armado interno. Este mapa permite identificar cuándo una forma de conflictividad",
+  "entra en fase de escalada."
+)
+
+txt_inicio_linea_subtipo <- paste(
+  "En el gráfico, mira cómo la línea de Violencia Contra Civiles parte casi de cero en 2018",
+  "y se convierte en una curva ascendente después de 2021. Esta transformación es el cambio de repertorio más importante.",
+  "Cada línea representa una forma codificada de protesta, lo que Erik Neveu denomina **repertorios de acción colectiva**.",
+  "Los repertorios cambian lentamente: formas nuevas conviven con los registros tradicionales.",
+  "La aparición y crecimiento de la *Violencia Contra Civiles* después de 2021 es la transformación más significativa",
+  "del periodo y evidencia un desplazamiento del conflicto desde lo político-reivindicativo hacia formas de violencia difusa.",
+  "El gráfico permite distinguir qué formas ganan terreno y cuáles se estabilizan o declinan."
+)
+
+txt_inicio_heatmap_evento <- paste(
+  "Observa la fila de Protesta: se mantiene oscura todos los años, confirmando que es un repertorio estructural.",
+  "En contraste, la fila de Violencia contra civiles se enciende solo en los últimos años.",
+  "Complementa la línea anterior ofreciendo una lectura anual de la intensidad.",
+  "Un sub-tipo que se oscurece progresivamente —como la *Protesta Pacífica*— indica",
+  "**institucionalización de esa forma de acción**; un sub-tipo que aparece en un único año señala un estallido coyuntural.",
+  "La combinación de ambos heatmaps revela cómo la estructura del conflicto ecuatoriano",
+  "se ha reorganizado a lo largo del periodo."
+)
+
+txt_inicio_linea_subtipo_fino <- paste(
+  "Mira el sub‑tipo 'Ataque' en comparación con 'Protesta Pacífica': el primero crece de manera abrupta en 2023,",
+  "mientras que el segundo tiene un patrón cíclico. Esto distingue una acción puramente reactiva de una acción estratégica.",
+  "Al descender al nivel más fino del registro, se distinguen **acciones concretas** que no son equivalentes",
+  "aunque compartan categoría: una *Protesta Pacífica* organizada no es lo mismo que una *Manifestación Violenta* espontánea;",
+  "una *Violencia de Turbas* difiere de un *Enfrentamiento Armado* reactivo.",
+  "Este gráfico permite rastrear la evolución de esas diferencias tácticas en el tiempo",
+  "y ver qué modalidades son estructurales y cuáles puramente reactivas a la coyuntura."
+)
+
+txt_inicio_heatmap_subtipo_fino <- paste(
+  "La cruz Violencia Contra Civiles × 2022 es el punto más intenso, señal inequívoca de un quiebre en el conflicto.",
+  "Aquí se cruza la especificidad de la acción con el año.",
+  "La diagonal oscura en *Protesta Pacífica* confirma su carácter estructural,",
+  "mientras que el bloque intenso de *Violencia Contra Civiles* en 2022-2023 señala el momento de quiebre.",
+  "Esta visualización es clave para identificar qué repertorios específicos definen cada ciclo del conflicto."
+)
+
+txt_temporal_linea_hitos <- paste(
+  "Localiza el pico de octubre de 2019: coincide con el Paro Nacional y es el más alto de toda la serie.",
+  "Compáralo con el pico de 2022, que es más bajo pero con mayor componente de violencia política.",
+  "Las líneas punteadas marcan eventos detonantes como el Paro Nacional de octubre de 2019,",
+  "la crisis carcelaria de 2023 o los estados de excepción.",
+  "En el modelo de **valor añadido** de Smelser, estos son los *factores precipitantes* que activan la movilización latente.",
+  "El gráfico muestra cómo la conflictividad se dispara en esos momentos",
+  "y permite comparar la magnitud de cada respuesta según el tipo de evento."
+)
+
+txt_temporal_heatmap_anio_mes <- paste(
+  "Observa la columna de octubre: solo en 2022 es intensa, confirmando que fue un evento único.",
+  "Mayo, en cambio, presenta varios años oscuros, lo que indica un pico estacional recurrente.",
+  "El mapa de calor revela **estacionalidades políticas**.",
+  "La concentración en mayo-junio está asociada al ciclo laboral e indígena ecuatoriano,",
+  "mientras que los picos de octubre remiten al Paro de 2019.",
+  "Esta regularidad muestra que, incluso en periodos de excepción, el conflicto mantiene ritmos predecibles",
+  "vinculados a los calendarios organizativos."
+)
+
+txt_temporal_dia_semana <- paste(
+  "Compara jueves y sábado: los jueves concentran más eventos totales, pero los sábados suelen tener",
+  "mayor proporción de violencia, según las barras apiladas.",
+  "La frecuencia por día de la semana distingue entre conflicto **organizado y espontáneo**.",
+  "Los días laborables concentran huelgas, marchas planificadas y acciones coordinadas por movimientos sociales",
+  "(redes informales con capacidad de convocatoria).",
+  "El fin de semana, en cambio, registra igual o más enfrentamientos y hechos violentos,",
+  "lo que sugiere la presencia de otros actores y dinámicas menos previsibles."
+)
+
+txt_temporal_promedio <- paste(
+  "Mira la curva: junio y octubre son los meses con mayor promedio histórico.",
+  "Estas son las dos 'temporadas altas' de conflictividad en Ecuador.",
+  "El promedio histórico mensual abstrae los eventos excepcionales y revela la **línea base de conflictividad**",
+  "a lo largo del año.",
+  "Un mes que supera consistentemente esta línea media sugiere que existe una tensión estructural latente",
+  "que se activa estacionalmente.",
+  "Esto permite separar la conflictividad estructural de los estallidos puramente coyunturales."
+)
+
+txt_temporal_apilado <- paste(
+  "Observa la barra de 2022: es la primera en la que la franja coral (violencia política) se vuelve visiblemente ancha,",
+  "marcando el inicio de un nuevo equilibrio de fuerzas.",
+  "El apilado anual muestra cómo la **composición del conflicto** se transforma.",
+  "Entre 2018 y 2021 predominan las manifestaciones, propias de un conflicto político-social gestionado",
+  "mediante repertorios convencionales.",
+  "A partir de 2022 la violencia política gana espacio, señalando una transición hacia un conflicto armado",
+  "donde las manifestaciones pierden peso relativo.",
+  "Este cambio en la estructura de los eventos es el dato más revelador del quiebre que vive el país."
+)
+
+txt_geo_mapa_tipo <- paste(
+  "En el mapa, los puntos verdes (manifestaciones) se agrupan en la Sierra; los rojos (explosiones/violencia)",
+  "aparecen dispersos en Guayas y Esmeraldas. Esta separación geográfica ya anticipa dos tipos de conflicto.",
+  "Cada punto geolocalizado marca un evento; el color identifica su tipo.",
+  "La concentración en la Sierra Centro y en Guayas no es azar: refleja diferencias en la **estructura de oportunidades",
+  "políticas** provincial, según la teoría de McAdam y Tarrow.",
+  "Una mayor densidad de organizaciones y una apertura política diferencial explican por qué ciertos territorios",
+  "concentran más eventos.",
+  "Sin embargo, el volumen no equivale necesariamente a mayor peligro;",
+  "la lectura territorial debe combinar frecuencia y letalidad."
+)
+
+txt_geo_mapa_subtipo <- paste(
+  "Al activar el sub‑tipo 'Violencia contra civiles', verás que los puntos se concentran en pocas localidades,",
+  "evidenciando focos de alto riesgo.",
+  "Desagregar por sub-tipo permite afinar el diagnóstico.",
+  "Algunas provincias muestran alta incidencia de protestas pacíficas organizadas;",
+  "otras, predominio de enfrentamientos violentos.",
+  "Este mapa evidencia que los **repertorios de acción** no se distribuyen homogéneamente,",
+  "sino que se territorializan según la historia organizativa, la presencia estatal y las economías locales."
+)
+
+txt_geo_coropletico <- paste(
+  "Pichincha aparece oscura no porque sea la más peligrosa, sino porque es la más poblada y sede del poder político.",
+  "Cambia a tasa en la sección Violencia y el mapa se invierte.",
+  "El coroplético mide la intensidad absoluta de eventos por provincia.",
+  "Una lectura aislada puede inducir a error: provincias populosas como Pichincha concentran más eventos,",
+  "pero eso no las convierte automáticamente en las más peligrosas.",
+  "La teoría de la **movilización de recursos** sugiere que el volumen de eventos también refleja",
+  "la capacidad organizativa de la sociedad civil.",
+  "Contraste este mapa con los indicadores de fatalidades para una evaluación de riesgo más completa."
+)
+
+txt_geo_barras_disorder <- paste(
+  "Si seleccionas Guayas, verás que la barra de violencia política es casi tan larga como la de manifestaciones,",
+  "un perfil muy distinto al de Pichincha.",
+  "Comparar las categorías amplias por provincia revela **perfiles territoriales de conflictividad**.",
+  "Una provincia con predominio de manifestaciones tiene una dinámica organizada y reivindicativa;",
+  "una con mayor violencia política sugiere presencia de actores armados o debilidad institucional.",
+  "Desde la perspectiva de las redes informales, estas diferencias reflejan la estructura de alianzas",
+  "y la capacidad de movilización de cada territorio."
+)
+
+txt_geo_barras_event <- paste(
+  "La barra 'Batallas' en Esmeraldas es mucho más prominente que en otras provincias,",
+  "lo que evidencia una dinámica de conflicto armado, no de protesta civil.",
+  "Aquí se desagregan los repertorios dentro de cada provincia.",
+  "La presencia sostenida de ciertos tipos de evento (huelgas, movilizaciones pacíficas)",
+  "indica que en ese territorio existen **organizaciones capaces de sostener la acción colectiva** en el tiempo.",
+  "La ausencia de estos repertorios y la presencia de violencia sugieren",
+  "un entorno de oportunidades políticas más cerrado o represivo."
+)
+
+txt_geo_barras_subevento <- paste(
+  "Compara 'Bloqueos' en Cotopaxi y 'Ataques' en Los Ríos: la especialización táctica habla de los actores dominantes en cada zona.",
+  "El nivel de sub-tipo permite identificar **estrategias de movilización** concretas que diferencian territorios.",
+  "Un perfil con alta frecuencia de protestas simbólicas, bloqueos y movilizaciones pacíficas",
+  "caracteriza a provincias con tradición organizativa;",
+  "uno con predominio de ataques y enfrentamientos armados describe zonas de conflicto criminal.",
+  "Estas diferencias son esenciales para interpretar la geografía del conflicto más allá del volumen."
+)
+
+txt_conf_red <- paste(
+  "En el centro de la red aparece un nodo enorme etiquetado 'Actor Armado No Identificado'.",
+  "Este nodo, sin nombre, es el más frecuente y conecta con casi todos los demás, revelando la opacidad del conflicto.",
+  "Desde la perspectiva de Donatella Della Porta, los movimientos sociales son **redes informales**",
+  "que vinculan actores mediante una identidad compartida.",
+  "En esta red, el tamaño del nodo indica frecuencia y las aristas muestran co-ocurrencias en un mismo evento.",
+  "La centralidad del \"Actor Armado No Identificado\" no es un defecto de los datos:",
+  "revela la **opacidad de la violencia criminal** en Ecuador y el hecho de que el conflicto más frecuente",
+  "involucra actores que el registro no puede nombrar, señalando una privatización e informalización de la violencia."
+)
+
+txt_conf_pares <- paste(
+  "El par más frecuente es 'Milicias (Grupos Criminales) - Civiles', con una frecuencia muy superior al resto.",
+  "Es la interacción que define el periodo.",
+  "Las díadas dominantes definen los **tipos de contienda política** presentes en el periodo.",
+  "Milicias-Civiles como primera interacción confirma que la violencia más recurrente",
+  "no es político-reivindicativa sino territorial-criminal.",
+  "El par Fuerzas estatales-Manifestantes, en cambio, corresponde a un conflicto de tipo reivindicativo clásico.",
+  "La convivencia de ambas díadas revela la superposición de lógicas de conflicto en el Ecuador actual."
+)
+
+txt_conf_evol_actor <- paste(
+  "Selecciona 'Fuerzas Estatales (Policía, FFAA)' y observa cómo su presencia mensual crece a partir de 2023,",
+  "coincidiendo con los estados de excepción.",
+  "Este gráfico permite seguir la trayectoria de un actor seleccionado.",
+  "Un aumento sostenido de su presencia sugiere **consolidación organizacional** o una escalada de su actividad;",
+  "un pico y caída rápida apunta a una activación coyuntural.",
+  "La teoría de la **movilización de recursos** (McCarthy y Zald) sostiene que la persistencia de un actor",
+  "depende de su capacidad para reunir y gestionar recursos;",
+  "esta línea permite evaluar empíricamente esa capacidad."
+)
+
+txt_conf_evol_categoria <- paste(
+  "Nota que las líneas de 'Estado y Fuerza Pública' y 'Grupos Criminales' corren casi paralelas en los últimos años,",
+  "indicando un escalamiento simétrico.",
+  "Agrupar actores por sector social —Estado y FF.PP., Movimiento Indígena, Sindicatos, Grupos Criminales—",
+  "permite ver cambios de protagonismo sistémico.",
+  "Los Grupos Criminales y el Estado mantienen presencia continua en todo el periodo,",
+  "mientras que el Movimiento Indígena y los Sindicatos se activan en coyunturas específicas.",
+  "Esta diferencia refleja **movilización de recursos** disímiles:",
+  "organizaciones con estructura permanente frente a sectores que dependen de ventanas de oportunidad política."
+)
+
+txt_conf_red_asociados <- paste(
+  "La organización 'CONAIE' aparece como un nodo central entre las organizaciones sociales,",
+  "conectando múltiples frentes de movilización.",
+  "Esta red muestra organizaciones concretas y sus vínculos en los mismos eventos.",
+  "A diferencia de la red de actor principal, aquí se visualizan **alianzas organizativas**",
+  "y se puede identificar si una organización actúa como nodo articulador.",
+  "Según Della Porta, las redes informales de los movimientos no eliminan la autonomía de los participantes;",
+  "esta visualización permite ver cómo se coordinan sin una estructura jerárquica única."
+)
+
+txt_conf_top_pares <- paste(
+  "Los primeros lugares están ocupados por combinaciones dentro del mismo sector (ej. dos grupos criminales juntos),",
+  "lo que sugiere enfrentamientos internos más que alianzas.",
+  "Los pares más frecuentes de organizaciones que co-ocurren en eventos son un proxy",
+  "de las **alianzas estratégicas** en el campo conflictivo.",
+  "La presencia de ciertas combinaciones puede indicar convergencia de agendas",
+  "o reacción frente a un adversario común.",
+  "Este gráfico resume los vínculos más sólidos entre las organizaciones sociales, sindicales y políticas del país."
+)
+
+txt_viol_heatmap <- paste(
+  "Observa el bloque correspondiente a Guayas en 2023: es el más oscuro, tanto en total como en tasa.",
+  "Esas muertes se concentran en el conflicto criminal.",
+  "La intensidad letal por provincia y año muestra que la muerte no se distribuye al azar.",
+  "La concentración en Guayas, Los Ríos y Esmeraldas responde a la territorialidad del crimen organizado",
+  "y a la debilidad diferencial del Estado.",
+  "Desde la teoría de la **estructura de oportunidades políticas**, la presencia o ausencia de controles institucionales",
+  "y la economía política local generan espacios donde la violencia armada prolifera.",
+  "Cambiar entre total y tasa permite contrastar el volumen absoluto",
+  "con el riesgo relativo que enfrenta cada ciudadano."
+)
+
+txt_viol_lollipop <- paste(
+  "La barra más larga casi siempre es 'Enfrentamiento Armado/Tiroteo'. No es el sub‑tipo más frecuente,",
+  "pero sí el más letal. Esa inversión entre visibilidad y mortalidad es la clave de lectura.",
+  "Este gráfico desvela una asimetría fundamental: el sub-tipo más frecuente no es el más letal.",
+  "*Enfrentamiento Armado/Tiroteo* acumula más muertes que muchos eventos de mayor visibilidad mediática,",
+  "porque su ocurrencia concentra violencia interpersonal armada fuera del control estatal.",
+  "Una mirada desde el **análisis sistémico** (Izaguirre) obliga a preguntarse",
+  "qué condiciones estructurales convierten un tipo de conflicto en particular en mortal."
+)
+
+txt_viol_top_provincias <- paste(
+  "Si seleccionas 'Tasa por 100k', Los Ríos suele aparecer en primer lugar, superando a Guayas.",
+  "Esto muestra que el riesgo individual es más alto en provincias pequeñas con intensa actividad criminal.",
+  "Ordenar las provincias por total de fatalidades o por tasa por 100.000 habitantes cambia la fotografía.",
+  "Los Ríos, con una población menor, puede aparecer como la más peligrosa en términos de riesgo individual.",
+  "Esta distinción entre volumen y riesgo es central para una **lectura de oportunidades políticas territoriales**:",
+  "las provincias con alta tasa suelen ser aquellas donde el Estado ha perdido capacidad de control",
+  "y los actores armados ocupan el espacio público cotidiano."
+)
+
+txt_viol_comp_actor <- paste(
+  "Cuando seleccionas 'Actor 1' verás que el total de fatalidades iniciadas por el Estado es bajo",
+  "frente a las iniciadas por actores armados, evidenciando una asimetría ofensiva.",
+  "Diferenciar entre Actor 1 (quien inicia el hecho) y Actor 2 (quien responde)",
+  "permite identificar la **dirección de la violencia** y no solo su volumen.",
+  "Esta distinción es analíticamente relevante para la teoría del conflicto:",
+  "saber si el Estado es mayormente iniciador o respondedor,",
+  "o si los actores armados son principalmente ofensivos, ilumina la lógica de la contienda.",
+  "La propuesta de Izaguirre de reconstruir la estrategia de los contendientes",
+  "encuentra aquí una herramienta empírica clave."
+)
+
+txt_viol_top_actores <- paste(
+  "El primer lugar lo ocupa 'Actor Armado No Identificado', con una cantidad de muertes que supera a cualquier actor nombrado.",
+  "Ese vacío es, en sí mismo, un hallazgo.",
+  "El dominio del \"Actor Armado No Identificado\" en la lista de actores más letales refleja",
+  "la **informalización y privatización de la violencia**: el Estado ya no monopoliza el uso de la fuerza",
+  "en amplias zonas del territorio ecuatoriano.",
+  "Esta situación encaja con la crítica que los enfoques sistémicos hacen a las lecturas funcionalistas",
+  "(como la de Gurr): la violencia no es un exabrupto de la frustración individual,",
+  "sino una característica de un sistema socioeconómico y político que ha externalizado la coerción",
+  "hacia actores no estatales."
+)
+
+txt_viol_sector_actor <- paste(
+  "El bloque 'Grupos Criminales y PPL' acumula más fatalidades que 'Estado y Fuerza Pública',",
+  "revelando que la violencia letal se origina mayoritariamente fuera del control estatal.",
+  "Agrupar las fatalidades por sector de actor —excluyendo la categoría difusa “Otros”—",
+  "revela la **estructura sectorial de la violencia letal**.",
+  "El peso de los Grupos Criminales y las Personas Privadas de la Libertad frente al Estado y la Fuerza Pública",
+  "es el indicador más directo del grado de escalada del conflicto armado interno.",
+  "Esta evidencia cuantitativa es la base para cualquier interpretación que, desde una perspectiva crítica,",
+  "cuestione la capacidad real del Estado para garantizar el monopolio legítimo de la violencia."
+)
+
+# ==============================================================================
+# CSS
+# ==============================================================================
+css_custom <- "
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+body{background:#f8f9fb;color:#2d3748;font-family:'IBM Plex Sans',sans-serif;font-size:16px;}
+.navbar{background:#0d1f2d!important;border-bottom:1px solid #1a3348;}
+.navbar .nav-link,.navbar .navbar-brand{color:rgba(255,255,255,.78)!important;}
+.navbar .nav-link.active{color:#fff!important;border-bottom:2px solid #00b894;font-weight:700;}
+.shell{max-width:1220px;margin:0 auto;padding:22px 24px 40px;}
+.hero{background:linear-gradient(135deg,#0d1f2d 0%,#17324a 100%);border-radius:16px;padding:28px;color:#fff;margin-bottom:18px;}
+.hero-kicker{display:inline-block;background:rgba(255,255,255,.1);color:#8bf4dd;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px;}
+.hero-title{font-size:34px;line-height:1.08;letter-spacing:-.03em;font-weight:700;margin-bottom:10px;}
+.hero-sub{color:rgba(255,255,255,.74);font-size:14px;line-height:1.7;max-width:720px;}
+.hero-meta{margin-top:14px;color:rgba(255,255,255,.42);font-size:11px;font-family:'IBM Plex Mono',monospace;}
+.page-title{color:#0d1f2d;font-size:30px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px;}
+.page-sub{color:#546e7a;font-size:14px;line-height:1.6;max-width:850px;margin-bottom:14px;}
+.narrative{border-left:4px solid #00b894;background:#e0faf4;border-radius:0 12px 12px 0;padding:14px 16px;font-size:13px;line-height:1.75;margin-bottom:16px;}
+.narrative.coral{border-left-color:#e17055;background:#fdecea;}
+.narrative.indigo{border-left-color:#4361ee;background:#eef1ff;}
+.filter-wrap{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:12px 14px 8px;margin-bottom:16px;}
+.filter-kicker,.section-label{font-size:10px;color:#546e7a;text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+.section-label{margin:8px 0 6px;}
+.kpi-card{background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:16px;}
+.kpi-value{font-size:28px;font-weight:700;line-height:1;font-family:'IBM Plex Mono',monospace;margin-bottom:6px;}
+.kpi-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#546e7a;font-weight:700;}
+.kpi-help{color:#90a4ae;font-size:10px;margin-top:4px;}
+.card.bslib-card{border-radius:14px;border:1px solid #eaecf0;box-shadow:none;overflow:hidden;}
+.card-header{background:transparent;border-bottom:1px solid #eaecf0;color:#0d1f2d;font-size:17px;font-weight:800;line-height:1.35;padding:14px 18px;}
+.viz-title{font-size:1em;font-weight:800;line-height:1.35;color:#0d1f2d;display:block;}
+.viz-title-main{font-size:24px;font-weight:800;line-height:1.25;color:#0d1f2d;display:block;}
+.chip{background:#e0faf4;color:#0f7a5a;border:1px solid #7de8cc;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:600;margin-bottom:14px;}
+.btn-reset{background:#e0faf4!important;color:#0f7a5a!important;border:1px solid #7de8cc!important;border-radius:8px!important;font-size:11px!important;font-weight:700!important;box-shadow:none!important;}
+.viz-caption{margin-top:10px;padding-top:10px;border-top:1px solid #eaecf0;color:#7a8792;font-size:10px;line-height:1.6;}
+.viz-desc{margin:0 0 10px;padding:10px 12px;border:1px solid #d7e5f3;background:#f4f7fb;border-radius:10px;color:#1f3547;font-size:14px;line-height:1.75;}
+.viz-context{margin:0 0 12px;padding:12px 14px;border-left:4px solid #4361ee;background:#eef1ff;border-radius:0 10px 10px 0;color:#1f3547;font-size:14px;line-height:1.8;}
+.narrative-toggle-wrap{margin:0 0 12px;}
+.btn-narrative-toggle{
+  display:inline-flex;align-items:center;gap:8px;
+  background:#f4f7fb;color:#1f3547;border:1px solid #d7e5f3;border-radius:9px;
+  font-size:12px;font-weight:700;letter-spacing:.02em;padding:7px 11px;cursor:pointer;
+}
+.btn-narrative-toggle:hover{background:#eaf2fb;border-color:#c7dbef;}
+.btn-narrative-toggle .bi{font-size:12px;transition:transform .2s ease;}
+.btn-narrative-toggle[aria-expanded='true'] .bi{transform:rotate(180deg);}
+.narrative-collapse{margin-top:8px;}
+.note{color:#38566e;font-size:13px;line-height:1.8;}
+.chip-wrap { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.chip-btn {
+  font-size:11px; font-weight:500; padding:4px 12px; border-radius:20px;
+  border:0.5px solid #eaecf0; background:#f8f9fb; color:#546e7a;
+  cursor:pointer; transition:all 0.15s; user-select:none;
+}
+.chip-btn.chip-on { border-color:transparent; color:#fff; }
+.chip-btn-all {
+  font-size:11px; padding:4px 12px; border-radius:20px;
+  border:0.5px solid #eaecf0; background:#f8f9fb; color:#546e7a;
+  cursor:pointer;
+}
+@media (max-width:991px){.shell{padding:16px;}.hero{padding:22px;}.hero-title{font-size:28px;}}
+.chip-group { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+.chip-label { font-size:11px; color:#546e7a; text-transform:uppercase;
+              letter-spacing:.05em; margin-bottom:2px; font-weight:700; }
+.chip-viol {
+  display:inline-block; padding:4px 13px; border-radius:20px;
+  border:1px solid #b0bec5; background:#fff; cursor:pointer;
+  font-size:12px; line-height:1.6; transition:all .15s; box-shadow:none; outline:none;
+}
+.chip-viol:hover { border-color:#546e7a; }
+.chip-viol.active { background:#e17055; border-color:#e17055; color:#fff; font-weight:500; }
+.chip-viol.active-teal { background:#00b894; border-color:#00b894; color:#fff; }
+.chip-viol.active-indigo { background:#4361ee; border-color:#4361ee; color:#fff; }
+.data-download-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 6px;}
+.btn-download-csv{display:inline-flex;align-items:center;gap:6px;background:#0d1f2d!important;color:#fff!important;border:none!important;border-radius:8px!important;font-size:11px!important;font-weight:700!important;padding:7px 14px!important;box-shadow:none!important;letter-spacing:.04em;text-transform:uppercase;}
+.btn-download-csv:hover{background:#17324a!important;}
+.btn-desc-toggle{display:inline-flex;align-items:center;gap:6px;background:#e0faf4!important;color:#0f7a5a!important;border:1px solid #7de8cc!important;border-radius:8px!important;font-size:11px!important;font-weight:700!important;padding:7px 14px!important;box-shadow:none!important;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;}
+.btn-desc-toggle:hover{background:#c3f5e8!important;}
+.btn-acled-link{display:inline-flex;align-items:center;gap:6px;background:#eef1ff!important;color:#2338b0!important;border:1px solid #b0bcf8!important;border-radius:8px!important;font-size:11px!important;font-weight:700!important;padding:7px 14px!important;box-shadow:none!important;letter-spacing:.04em;text-transform:uppercase;text-decoration:none!important;}
+.btn-acled-link:hover{background:#dfe5ff!important;color:#1d2f99!important;}
+.acled-link-note{font-size:14px;color:#1f3547;line-height:1.8;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:#f1f6fb;border:1px solid #d7e5f3;}
+.flow-accordion{margin:0 0 14px;}
+.flow-toggle{width:100%;display:flex;align-items:center;gap:9px;justify-content:flex-start;background:#fff;color:#0d1f2d;border:1px solid #d7e5f3;border-radius:10px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:10px 13px;cursor:pointer;box-shadow:none;}
+.flow-toggle:hover{background:#f4f7fb;border-color:#c7dbef;}
+.flow-toggle .flow-chevron{margin-left:auto;transition:transform .2s ease;color:#546e7a;}
+.flow-toggle[aria-expanded='true'] .flow-chevron{transform:rotate(180deg);}
+.flow-panel{background:#fff;border:1px solid #eaecf0;border-radius:12px;margin-top:8px;padding:12px;box-shadow:none;}
+.flow-intro{color:#38566e;font-size:12px;line-height:1.6;margin:0 2px 10px;}
+.flow-table-wrap{overflow-x:auto;border:1px solid #eaecf0;border-radius:10px;background:#fff;}
+.flow-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;color:#0d1f2d;}
+.flow-table th{background:#0d1f2d;color:#fff;text-align:left;font-size:10px;letter-spacing:.08em;padding:10px 14px;font-weight:800;}
+.flow-cell{border-top:1px solid #eaecf0;border-right:1px solid #eaecf0;padding:10px 14px;vertical-align:middle;line-height:1.45;}
+.flow-disorder{font-weight:800;}
+.flow-event{font-weight:600;}
+.flow-sub{color:#1f3547;}
+.flow-table tr:first-child .flow-cell{border-top:none;}
+.desc-panel{background:#fff;border:1px solid #eaecf0;border-radius:14px;padding:20px 22px;margin-bottom:18px;}
+.desc-panel h6{color:#0d1f2d;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px;}
+.desc-panel h6:first-child{margin-top:0;}
+.desc-panel ul{padding-left:18px;margin:0 0 10px;color:#2d3748;font-size:13px;line-height:1.75;}
+.desc-panel .desc-badge{display:inline-block;background:#e0faf4;color:#0f7a5a;border:1px solid #7de8cc;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;margin-right:4px;font-family:'IBM Plex Mono',monospace;}
+.desc-panel .desc-badge-coral{background:#fdecea;color:#b04030;border-color:#fab8a8;}
+.desc-panel .desc-badge-navy{background:#eef1ff;color:#2338b0;border-color:#b0bcf8;}
+.gloss-intro{margin-bottom:14px;color:#2d3748;font-size:13px;line-height:1.8;}
+.gloss-section-title{font-size:22px;font-weight:800;line-height:1.35;color:#0d1f2d;margin:8px 0 6px;}
+.gloss-section-desc{font-size:14px;line-height:1.8;color:#38566e;margin:0 0 14px;}
+.gloss-flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.gloss-node{flex:1 1 260px;background:#fff;border:1px solid #eaecf0;border-radius:12px;padding:12px 14px;}
+.gloss-node-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#546e7a;margin-bottom:6px;}
+.gloss-node-main{font-size:14px;font-weight:700;color:#0d1f2d;margin-bottom:6px;}
+.gloss-node-sub{font-size:12px;color:#546e7a;line-height:1.7;}
+.gloss-arrow{display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#90a4ae;min-width:24px;}
+.gloss-node-alt-a{background:#eef1ff;border-color:#b0bcf8;}
+.gloss-node-alt-b{background:#e0faf4;border-color:#7de8cc;}
+.gloss-chip{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;color:#0f7a5a;background:#e0faf4;border:1px solid #7de8cc;border-radius:999px;padding:2px 8px;margin:2px 6px 2px 0;}
+.change-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.change-card{border-radius:12px;border:1px solid #eaecf0;padding:14px;}
+.change-card.transformed{background:rgba(194,24,91,.10);border-color:rgba(194,24,91,.35);}
+.change-card.new{background:rgba(240,165,0,.14);border-color:rgba(240,165,0,.45);}
+.change-badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:4px 10px;margin-bottom:8px;}
+.change-badge.transformed{background:#e3e9ff;color:#2338b0;border:1px solid #b0bcf8;}
+.change-badge.new{background:#dff7ee;color:#0f7a5a;border:1px solid #7de8cc;}
+.gloss-subtitle{font-size:14px;font-weight:800;line-height:1.5;color:#000;text-decoration:underline;text-decoration-color:#000;text-underline-offset:3px;margin:0 0 8px;}
+.change-lead{font-size:13px;line-height:1.8;color:#38566e;margin:0 0 8px;}
+.change-list{margin:0;padding-left:18px;}
+.change-list li{margin:0 0 8px;color:#2d3748;font-size:13px;line-height:1.75;}
+@media (max-width:991px){.change-grid{grid-template-columns:1fr;}}
+.reading-body .page-sub{font-size:16px;line-height:1.8;}
+.reading-body .narrative{font-size:16px;line-height:1.85;}
+.reading-body .viz-desc{font-size:16px;line-height:1.85;}
+.reading-body .viz-context{font-size:16px;line-height:1.85;}
+.reading-body .note{font-size:16px;line-height:1.85;}
+"
+
+# ==============================================================================
+# UI
+# ==============================================================================
+ui <- page_navbar(
+  title = tags$span(
+    tags$span("ACLED", style = "color:#00b894"), 
+    " Ecuador | 2018 - 2025"
+  ),
+  id = "nav_principal",
+  theme = bs_theme(
+    version = 5,
+    bg = col_fondo,
+    fg = col_texto,
+    primary = col_teal,
+    base_font = font_google("IBM Plex Sans"),
+    heading_font = font_google("IBM Plex Sans"),
+    code_font = font_google("IBM Plex Mono")
+  ),
+  header = tags$head(tags$style(HTML(css_custom)), useShinyjs()),
+  # ==========================================================================
+  # INICIO
+  # ==========================================================================
+  nav_panel(
+    "Inicio",
+    div(
+      class = "shell",
+      div(
+        class = "hero",
+        div(class = "hero-kicker", "Panel analítico de código abierto"),
+        div(class = "hero-title", "Conflicto y Movilizacion Social en Ecuador"),
+        div(class = "hero-sub", nar_inicio),
+        div(class = "hero-meta", "Mayari Tapia")
+      ),
+      layout_columns(
+        col_widths = c(4, 4, 4),
+        kpi_card(format(total_eventos, big.mark = ","), "Eventos documentados", "Total de incidentes registrados por ACLED, 2018-2025", col_teal),
+        kpi_card(format(total_fatalidades, big.mark = ","), "Fatalidades", "Muertes confirmadas o estimadas reportadas en los eventos", col_coral, col_coral_bg, "#fab8a8"),
+        kpi_card(format(total_provincias, big.mark = ","), "Provincias con conflicto registrado", "Provincias con al menos un evento en el periodo", col_indigo, col_indigo_bg, col_indigo_lt)
+      ),
+      # Barra de descarga y descripción del dataset
+      div(
+        class = "data-download-bar",
+        downloadButton("descargar_csv",
+                       tagList(bsicons::bs_icon("download"), " Descargar datos (CSV)"),
+                       class = "btn-download-csv"),
+        tags$button(
+          class = "btn-desc-toggle",
+          `data-bs-toggle` = "collapse",
+          `data-bs-target` = "#panel_desc_datos",
+          `aria-expanded` = "false",
+          tagList(bsicons::bs_icon("info-circle"), " Ver descripción del dataset")
+        ),
+        tags$a(
+          href = "https://acleddata.com/methodology/acled-codebook",
+          target = "_blank",
+          rel = "noopener noreferrer",
+          class = "btn-acled-link",
+          tagList(bsicons::bs_icon("box-arrow-up-right"), " Codebook ACLED")
+        )
+      ),
+      div(
+        class = "acled-link-note",
+        HTML("<strong>Nota metodológica:</strong> el CSV descargable de esta app es una versión transformada por Mayari Tapia (limpieza, traducción y variables derivadas) para analizar conflicto y movilizaciones en Ecuador entre 2018 y 2025. No es idéntico al archivo crudo original de ACLED. Para revisar definiciones y criterios oficiales de codificación, consulta el codebook.")
+      ),
+      tabla_clasificacion_eventos(datos, paleta_disorder),
+      div(
+        id = "panel_desc_datos",
+        class = "collapse",
+        div(
+          class = "desc-panel",
+          layout_columns(
+            col_widths = c(6, 6),
+            div(
+              tags$h6("Variables nuevas creadas"),
+              tags$ul(
+                tags$li(HTML('<span class="desc-badge">month_name</span> Nombre del mes en español (enero–diciembre).')),
+                tags$li(HTML('<span class="desc-badge">year_month</span> Fecha truncada al primer día del mes para series temporales.')),
+                tags$li(HTML('<span class="desc-badge">day_of_week</span> Día de la semana derivado de <code>event_date</code>.')),
+                tags$li(HTML('<span class="desc-badge">assoc_actor_1_tipo</span> / <span class="desc-badge">assoc_actor_2_tipo</span> Clasificación en 11 categorías: Sin Registro, Movimiento Indígena, Sindicatos y Gremios, Sector Educación, Sector Salud, Estado y Fuerza Pública, Vigilancia Comunitaria/Barrial, Grupos Criminales y PPL, Partidos y Políticos, Sociedad Civil, Otros Grupos.')),
+                tags$li(HTML('<span class="desc-badge">assoc_actor_1_detalle</span> / <span class="desc-badge">assoc_actor_2_detalle</span> Nombre limpio del actor asociado (formato título, NA reemplazado por "Sin Actor Asociado").')),
+                tags$li(HTML('<span class="desc-badge">violencia_genero</span> Derivada del campo <code>tags</code>: identifica violencia sexual, mujeres funcionarias, políticas, candidatas, activistas, niñas, familiares y otros.')),
+                tags$li(HTML('<span class="desc-badge">nivel_fatalidades</span> Factor ordinal: Sin fatalidades / Baja (1) / Media (2–3) / Alta (4–9) / Masiva (10+).')),
+                tags$li(HTML('<span class="desc-badge">tiene_fatalidades</span> Booleano: <code>fatalities &gt; 0</code>.')),
+                tags$li(HTML('<span class="desc-badge">crowd_size</span> Tamaño de la multitud categorizado en 6 niveles a partir del campo libre <code>tags</code>.')),
+                tags$li(HTML('<span class="desc-badge">crowd_size_raw</span> Valor crudo extraído de <code>tags</code>, conservado para auditoría y análisis numérico directo.')),
+                tags$li(HTML('<span class="desc-badge">fuente_principal</span> Primera fuente extraída del campo <code>source</code> (antes del primer ";").')),
+                tags$li(HTML('<span class="desc-badge">notes_clean</span> Campo <code>notes</code> limpiado: sin referencias de fuente, sin saltos de línea, sin corchetes finales.'))
+              )
+            ),
+            div(
+              tags$h6("Variables modificadas respecto al original ACLED"),
+              tags$ul(
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">event_type</span> Traducido al español mediante diccionario controlado (Battles, Protests, Riots, Explosions/Remote violence, Violence against civilians y Strategic developments).')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">sub_event_type</span> Armonizado con reglas específicas por familia de evento; por ejemplo, Fuerza Excesiva Contra Manifestantes se mantiene bajo Protestas; Disturbios se separa en Manifestación Violenta y Violencia de Turbas (sub-tipos independientes bajo Disturbios).')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">disorder_type</span> Conserva solo la categoría primaria antes de ";"; el caso mixto "Political violence; Demonstrations" queda como Violencia política según el tipo primario ACLED.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">inter1 / inter2</span> Tipos canónicos de actor traducidos al español desde el Codebook ACLED y conservados en el CSV final.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">admin1</span> Provincias corregidas con tildes y formato título: Galápagos, Manabí, Los Ríos, Bolívar, Cañar, Sucumbíos, Santo Domingo de los Tsáchilas.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">actor1 / actor2</span> Limpiados con diccionario de siglas; organizaciones ecuatorianas expandidas a nombre completo (CONAIE, FUT, UNE, etc.).')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">assoc_actor_1_detalle / assoc_actor_2_detalle</span> Derivados de los actores asociados originales: traducidos, limpiados, normalizados en formato título y con "Sin Actor Asociado" cuando no hay registro.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">interaction</span> Limpiado: eliminado sufijo " only"; prefijado "Solo " cuando no contiene guión.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">civilian_targeting</span> Traducido: "Civilian targeting" → "Ataque a civiles".')),
+                tags$li(HTML('<span class="desc-badge desc-badge-coral">admin2 / location</span> Formato título aplicado para mejorar lectura territorial.'))
+              ),
+              tags$h6("Variables eliminadas del original"),
+              tags$ul(
+                tags$li(HTML('<span class="desc-badge desc-badge-navy">iso</span> <span class="desc-badge desc-badge-navy">country</span> <span class="desc-badge desc-badge-navy">region</span> <span class="desc-badge desc-badge-navy">admin3</span> Redundantes para el análisis de Ecuador.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-navy">source</span> <span class="desc-badge desc-badge-navy">tags</span> <span class="desc-badge desc-badge-navy">notes</span> No quedan como campos crudos en el maestro; se conservan versiones derivadas: <code>fuente_principal</code>, <code>crowd_size_raw</code>, <code>crowd_size</code>, <code>violencia_genero</code> y <code>notes_clean</code>.')),
+                tags$li(HTML('<span class="desc-badge desc-badge-navy">assoc_actor_1</span> <span class="desc-badge desc-badge-navy">assoc_actor_2</span> Reemplazadas por campos finales de detalle y tipo sociopolítico.'))
+              ),
+              tags$h6("Columnas en el dataset final (32)"),
+              tags$p(style = "font-size:12px; color:#546e7a; line-height:1.7;",
+                     HTML("event_id_cnty, event_date, year, month_name, year_month, day_of_week, disorder_type, event_type, sub_event_type, actor1, inter1, actor2, inter2, assoc_actor_1_detalle, assoc_actor_1_tipo, assoc_actor_2_detalle, assoc_actor_2_tipo, interaction, civilian_targeting, admin1, admin2, location, latitude, longitude, fatalities, tiene_fatalidades, nivel_fatalidades, crowd_size_raw, crowd_size, violencia_genero, fuente_principal, notes_clean."))
+            )
+          )
+        )
+      ),
+      
+      layout_columns(
+        col_widths = c(8, 4),
+        card(
+          card_header(tags$span(class = "viz-title-main", "¿Cómo cambió la conflictividad mes a mes? Tres lógicas de acción")),
+          card_body(
+            bloque_descriptivo(desc_inicio_linea_disorder),
+            bloque_contexto(txt_inicio_linea_disorder),
+            uiOutput("g1_home_chips"),
+            plotlyOutput("g1_home_lineas", height = "420px"),
+            div(class = "viz-caption", caption_acled)
+          )
+        ),
+        card(
+          card_header("Claves de lectura"),
+          card_body(
+            div(class = "note", HTML(glue(
+              "<strong>Pico nacional:</strong> {fecha_mes_es(mes_pico_nacional$year_month)} con {comma(mes_pico_nacional$eventos)} eventos.<br><br>
+              <strong>Categoria dominante reciente:</strong> {disorder_reciente}.<br><br>
+              <strong>Territorio mas activo:</strong> {provincia_mas_activa}.<br><br>"
+            )))
+          )
+        )
+      ),
+      visual_card(
+        "¿Qué años concentran más conflicto por categoría?",
+        plotlyOutput("g_disorder_heatmap", height = "360px"),
+        desc = desc_inicio_heatmap_disorder,
+        note = txt_inicio_heatmap_disorder
+      ),
+      visual_card(
+        "Los repertorios de acción: cómo se expresa el conflicto",
+        tagList(
+          uiOutput("g_event_chips"),
+          plotlyOutput("g_event_lineas", height = "400px")
+        ),
+        desc = desc_inicio_linea_subtipo,
+        note = txt_inicio_linea_subtipo
+      ),
+      visual_card(
+        "Intensidad anual por tipo de evento",
+        plotlyOutput("g_event_heatmap", height = "360px"),
+        desc = desc_inicio_heatmap_evento,
+        note = txt_inicio_heatmap_evento
+      ),
+      visual_card(
+        "Detalle mensual: ¿qué ocurrió en cada episodio conflictivo?",
+        tagList(
+          uiOutput("gsub_home_chips"),
+          plotlyOutput("gsub_home_lineas", height = "400px")
+        ),
+        desc = desc_inicio_linea_subtipo_fino,
+        note = txt_inicio_linea_subtipo_fino
+      ),
+      visual_card(
+        "Intensidad anual por sub-tipologías de evento",
+        plotlyOutput("gsub_home_heatmap", height = "360px"),
+        desc = desc_inicio_heatmap_subtipo_fino,
+        note = txt_inicio_heatmap_subtipo_fino
+      )
+    )
+  ),
+  
+  # ==========================================================================
+  # TEMPORALIDAD
+  # ==========================================================================
+  nav_panel(
+    "Temporalidad",
+    div(
+      class = "shell reading-body",
+      div(class = "page-title", "¿Cuándo ocurre el conflicto? Ciclos, picos y estacionalidad"),
+      div(class = "page-sub", "El conflicto tiene ritmos. Esta sección muestra cuándo se concentra, cuándo se dispersa y qué eventos anclan los picos más intensos."),
+      
+      div(
+        class = "filter-wrap",
+        div(class = "filter-kicker", "Filtros"),
+        layout_columns(
+          col_widths = c(6, 6),
+          sliderInput("temporal_anios", "Periodo", min(datos$year), max(datos$year), c(min(datos$year), max(datos$year)), sep = "", step = 1),
+          selectInput("temporal_tipo", "Tipo de conflicto", c("Todos", levels(datos$disorder_type)), selected = "Todos"),
+          div(style = "display:flex;align-items:end;height:100%;", btn_reset("btn_reset_temporal"))
+        )
+      ),
+      
+      bloque_narrativo_fijo(nar_temporal_1),
+      uiOutput("dato_dinamico_temporal"),
+      
+      visual_card(
+        "¿Qué días son más conflictivos?",
+        plotlyOutput("g3_diasemana", height = "420px"),
+        desc = desc_temporal_dia_semana,
+        note = txt_temporal_dia_semana
+      ),
+      
+      layout_columns(
+        col_widths = c(7, 5),
+        card(
+          card_header("¿Cómo cambió el conflicto año a año?"),
+          card_body(
+            bloque_descriptivo(desc_temporal_apilado),
+            bloque_contexto(txt_temporal_apilado),
+            plotlyOutput("g_tendencia_anual", height = "320px")
+          )
+        ),
+        card(
+          card_header("¿En qué meses del año se concentra el conflicto?"),
+          card_body(
+            bloque_descriptivo(desc_temporal_heatmap_anio_mes),
+            bloque_contexto(txt_temporal_heatmap_anio_mes),
+            plotlyOutput("g2_heatmap", height = "320px")
+          )
+        )
+      ),
+      
+      separador(),
+      bloque_narrativo_fijo(nar_temporal_2),
+      
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Promedio histórico por mes"),
+          card_body(
+            bloque_descriptivo(desc_temporal_promedio),
+            bloque_contexto(txt_temporal_promedio),
+            plotlyOutput("g_estacionalidad", height = "300px")
+          )
+        )
+      )
+    )
+  ),
+  
+  # ==========================================================================
+  # GEOGRAFIA
+  # ==========================================================================
+  nav_panel(
+    "Geografía",
+    div(
+      class = "shell reading-body",
+      div(class = "page-title", "¿Dónde ocurre el conflicto? Territorio, intensidad y letalidad"),
+      div(class = "page-sub", "Comparar volumen y letalidad evita confundir provincias más activas con provincias más peligrosas."),
+      div(
+        class = "filter-wrap",
+        div(class = "filter-kicker", "Filtros"),
+        layout_columns(
+          col_widths = c(4, 4, 4),
+          selectInput("geo_anio", "Año", c("Todos", sort(unique(datos$year))), selected = "Todos"),
+          selectInput("geo_tipo", "Tipo de evento", c("Todos", levels(datos$event_type)), selected = "Todos"),
+          div(style = "display:flex;align-items:end;height:100%;", btn_reset("btn_reset_geo"))
+        )
+      ),
+      bloque_narrativo_fijo(nar_geo, "teal"),
+      uiOutput("chip_geo"),
+      
+      visual_card(
+        "Distribución territorial por tipo de conflicto",
+        leafletOutput("mapa_puntos", height = "500px"),
+        desc = desc_geo_mapa_tipo,
+        note = txt_geo_mapa_tipo
+      ),
+      visual_card(
+        "Distribución territorial por forma específica de conflicto",
+        leafletOutput("mapa_puntos_sub", height = "500px"),
+        desc = desc_geo_mapa_subtipo,
+        note = txt_geo_mapa_subtipo
+      ),
+      visual_card(
+        "Intensidad provincial: volumen total de eventos",
+        leafletOutput("mapa_provincias", height = "420px"),
+        desc = desc_geo_coropletico,
+        note = txt_geo_coropletico
+      ),
+      
+      div(class = "section-label", "Perfil por provincia"),
+      layout_columns(
+        col_widths = c(12),
+        selectInput("geo_provincia", "Provincia", c("Todas", sort(unique(as.character(datos$admin1)))), selected = "Todas")
+      ),
+      layout_columns(
+        col_widths = c(6, 6),
+        card(
+          card_header("Eventos por provincia y tipo de conflicto"),
+          card_body(
+            bloque_descriptivo(desc_geo_barras_disorder),
+            bloque_contexto(txt_geo_barras_disorder),
+            plotlyOutput("g_prov_disorder", height = "440px")
+          )
+        ),
+        card(
+          card_header("Eventos por provincia y tipo de evento"),
+          card_body(
+            bloque_descriptivo(desc_geo_barras_event),
+            bloque_contexto(txt_geo_barras_event),
+            plotlyOutput("g_prov_event", height = "440px")
+          )
+        )
+      ),
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Eventos por provincia y sub-tipo de evento"),
+          card_body(
+            bloque_descriptivo(desc_geo_barras_subevento),
+            bloque_contexto(txt_geo_barras_subevento),
+            plotlyOutput("g_prov_subevent", height = "500px")
+          )
+        )
+      )
+    )
+  ),
+  
+  # ==========================================================================
+  # CONFLICTOS
+  # ==========================================================================
+  nav_panel(
+    "Conflictos",
+    div(
+      class = "shell reading-body",
+      div(class = "page-title", "¿Quiénes son los protagonistas? Actores y patrones de interacción"),
+      div(class = "page-sub", "Esta sección muestra quién actúa, con quién se vincula y con qué frecuencia aparece cada relación."),
+      div(
+        class = "filter-wrap",
+        div(class = "filter-kicker", "Filtros base"),
+        layout_columns(
+          col_widths = c(4, 4, 4),
+          sliderInput("actores_anios", "Periodo", min(datos$year), max(datos$year), c(min(datos$year), max(datos$year)), sep = "", step = 1),
+          selectInput("actores_provincia", "Provincia", c("Todas", sort(unique(as.character(datos$admin1)))), selected = "Todas"),
+          div(style = "display:flex;align-items:end;height:100%;", btn_reset("btn_reset_actores"))
+        )
+      ),
+      
+      bloque_narrativo_fijo(nar_conflicto, "indigo"),
+      uiOutput("chip_actores"),
+      
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Red de protagonistas: ¿quién interactúa con quién?"),
+          card_body(
+            bloque_descriptivo(desc_conf_red),
+            bloque_contexto(txt_conf_red),
+            visNetworkOutput("g_red", height = "700px")
+          )
+        )
+      ),
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("¿Qué pares de actores se encuentran más?"),
+          card_body(
+            bloque_descriptivo(desc_conf_pares),
+            bloque_contexto(txt_conf_pares),
+            plotlyOutput("g_interaccion_barras", height = "500px")
+          )
+        )
+      ),
+      
+      separador(),
+      
+      visual_card(
+        "Evolución temporal de actores específicos",
+        tagList(
+          div(class = "filter-kicker", style = "margin-bottom:6px;", "¿Qué posición te interesa analizar?"),
+          radioButtons("g1_actor_col", NULL, choices = c("Actor 1" = "actor1", "Actor 2" = "actor2"), selected = "actor1", inline = TRUE),
+          div(class = "filter-kicker", style = "margin-bottom:8px;", "Selecciona un actor específico"),
+          selectInput("g1_actor_sel", NULL, choices = c("Todos"), selected = "Todos"),
+          plotlyOutput("g1_actores_lineas", height = "400px")
+        ),
+        desc = desc_conf_evol_actor,
+        note = txt_conf_evol_actor
+      ),
+      
+      visual_card(
+        "Evolución por categoría de actor: ¿qué sectores están más activos?",
+        tagList(
+          div(class = "filter-kicker", style = "margin-bottom:6px;", "Rol del actor a comparar"),
+          radioButtons("g2_tipo_col", NULL, choices = c("Actor 1" = "assoc_actor_1_tipo", "Actor 2" = "assoc_actor_2_tipo"), selected = "assoc_actor_1_tipo", inline = TRUE),
+          uiOutput("g2_tipo_chips"),
+          plotlyOutput("g2_tipo_lineas", height = "380px")
+        ),
+        desc = desc_conf_evol_categoria,
+        note = txt_conf_evol_categoria
+      ),
+      
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Red de actores asociados: vínculos entre organizaciones"),
+          card_body(
+            bloque_descriptivo(desc_conf_red_asociados),
+            bloque_contexto(txt_conf_red_asociados),
+            visNetworkOutput("red_detalle", height = "620px")
+          )
+        )
+      ),
+      layout_columns(
+        col_widths = c(12),
+        card(
+          card_header("Top 15 de interacciones entre organizaciones"),
+          card_body(
+            bloque_descriptivo(desc_conf_top_pares),
+            bloque_contexto(txt_conf_top_pares),
+            plotlyOutput("barras_detalle", height = "500px")
+          )
+        )
+      )
+      
+    )
+  ),
+  
+  # ========================================================================== 
+  # VIOLENCIA - VERSION CORREGIDA (disposición vertical, gráficos ajustados)
+  # ========================================================================== 
+  nav_panel(
+    "Violencia",
+    div(
+      class = "shell reading-body",
+      div(class = "page-title", "¿Cuánto muere? Distribución de la violencia letal"),
+      div(class = "page-sub", "Compara provincias, tipos de evento y actores usando totales y tasas normalizadas por población."),
+      bloque_narrativo_fijo(nar_violencia, "coral"),
+      
+      # Filtros globales
+      div(
+        class = "filter-wrap",
+        layout_columns(
+          col_widths = c(6, 6),
+          sliderInput("viol_anios", "Rango de años",
+                      min = min(datos$year, na.rm = TRUE),
+                      max = max(datos$year, na.rm = TRUE),
+                      value = c(2023, 2024), sep = "", step = 1),
+          selectInput("viol_metrica", "Métrica de comparación",
+                      choices = c("Total fatalidades" = "total",
+                                  "Tasa por 100k hab." = "tasa"))
+        )
+      ),
+      
+      # KPIs
+      layout_columns(
+        col_widths = c(6, 6),
+        kpi_card(
+          valor = textOutput("vb_fat_total"),
+          etiqueta = "Total fatalidades",
+          ayuda = "Suma de víctimas en el período seleccionado",
+          color_val = col_coral,
+          color_bg = col_coral_bg
+        ),
+        kpi_card(
+          valor = textOutput("vb_prov_riesgo"),
+          etiqueta = "Provincia de mayor riesgo relativo",
+          ayuda = "Tasa de fatalidades por 100.000 habitantes para comparar provincias de distinto tamaño",
+          color_val = col_indigo,
+          color_bg = col_indigo_bg
+        )
+      ),
+      
+      # G1: Heatmap provincial (normalizado)
+      visual_card(
+        "Mapa provincial: ¿dónde se concentra la letalidad?",
+        plotlyOutput("gv1_heatmap_provincia", height = "450px"),
+        desc = desc_viol_heatmap,
+        note = txt_viol_heatmap
+      ),
+      
+      # G2: Lollipop de sub-eventos
+      visual_card(
+        "¿Qué formas de conflicto concentran más muertes?",
+        plotlyOutput("gv2_lollipop_subevento", height = "450px"),
+        desc = desc_viol_lollipop,
+        note = txt_viol_lollipop
+      ),
+      
+      # G3: Top 10 provincias con mayor letalidad
+      visual_card(
+        "Top 10 de provincias con mayor letalidad",
+        plotlyOutput("gv6_top_provincias", height = "400px"),
+        desc = desc_viol_top_provincias,
+        note = txt_viol_top_provincias
+      ),
+      
+      separador(),
+      
+      div(class = "filter-kicker", style = "margin-bottom:8px;", "Filtros de actor (aplican solo a los gráficos de actores)"),
+      div(
+        class = "filter-wrap",
+        radioButtons("viol_pos_actor", "Análisis de actor",
+                     choices = c("Principal (Actor 1)" = "actor1",
+                                 "Secundario (Actor 2)" = "actor2"),
+                     inline = TRUE)
+      ),
+      
+      # G4: Comparativa de tipo de actor asociado (Actor 1 vs Actor 2)
+      visual_card(
+        "Comparativa de letalidad por tipo de actor",
+        plotlyOutput("gv4_comp_tipos_actor", height = "420px"),
+        desc = desc_viol_comp_actor,
+        note = txt_viol_comp_actor
+      ),
+      
+      # G5: Top 10 actores letales
+      visual_card(
+        "Top 10 de actores con mayor letalidad",
+        plotlyOutput("gv5_barras_actor", height = "400px"),
+        desc = desc_viol_top_actores,
+        note = txt_viol_top_actores
+      ),
+      
+      # G6: Letalidad por tipo de actor asociado (excluyendo "Otros")
+      visual_card(
+        "Fatalidades por sector de actor",
+        plotlyOutput("gv7_tipos_actor", height = "400px"),
+        desc = desc_viol_sector_actor,
+        note = txt_viol_sector_actor
+      )
+    )
+  ),
+  
+  nav_panel(
+    title = tagList(bsicons::bs_icon("journal-text"), " Glosario"),
+    div(
+      class = "shell",
+      div(class = "page-title", "Glosario visual de variables"),
+      div(class = "page-sub", "Mapa textual-visual para entender cómo se conectan las variables en ACLED y qué transformaciones se hicieron para esta app."),
+      div(
+        class = "gloss-intro",
+        HTML('Este panel resume relaciones clave de variables. Para la definición metodológica oficial y la descripción/conceptualización detalla de cada variable del dataset, revisa el <a href="https://acleddata.com/methodology/acled-codebook" target="_blank" rel="noopener noreferrer">ACLED Codebook</a>.')
+      ),
+      tags$a(
+        href = "https://acleddata.com/methodology/acled-codebook",
+        target = "_blank",
+        rel = "noopener noreferrer",
+        class = "btn-acled-link",
+        tagList(bsicons::bs_icon("box-arrow-up-right"), " Abrir codebook ACLED")
+      ),
+      separador(),
+      div(class = "gloss-section-title", "Mapa de relaciones (ACLED)"),
+      div(
+        class = "gloss-section-desc",
+        "Lectura rápida del esquema ACLED: primero se clasifica el evento en tres niveles (desorden, tipo y subtipo), luego se identifican actores, sus tipos canónicos de interacción y sus asociaciones, y finalmente se ubica el hecho en tiempo, territorio e impacto letal."
+      ),
+      div(
+        class = "gloss-flow",
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Nivel 1"),
+          div(class = "gloss-node-main", "Tipo de desorden"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "disorder_type"), "Categoría macro del evento (3 grupos): violencia política, manifestaciones y desarrollos estratégicos.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-b",
+          div(class = "gloss-node-title", "Nivel 2"),
+          div(class = "gloss-node-main", "Tipo de evento"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "event_type"), "Tipología principal del hecho (6 tipos ACLED: Battles, Protests, Riots, Explosions/Remote violence, Violence against civilians, Strategic developments).")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Nivel 3"),
+          div(class = "gloss-node-main", "Subtipo de evento"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "sub_event_type"), "Nivel más detallado de codificación; en esta app se armoniza en español y se corrigen cruces sensibles: Fuerza Excesiva Contra Manifestantes queda bajo Protestas; Disturbios se separa en dos sub-tipos independientes: Manifestación Violenta y Violencia de Turbas.")
+        )
+      ),
+      div(
+        class = "gloss-flow",
+        div(
+          class = "gloss-node gloss-node-alt-b",
+          div(class = "gloss-node-title", "Actores base"),
+          div(class = "gloss-node-main", "Actor 1 y Actor 2"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "actor1"), tags$span(class = "gloss-chip", "actor2"), "Actores principales reportados para el evento; sus nombres se traducen, limpian y normalizan para mejorar comparabilidad.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Tipos canónicos"),
+          div(class = "gloss-node-main", "Inter1 e Inter2"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "inter1"), tags$span(class = "gloss-chip", "inter2"), "Categorías de actor del Codebook ACLED traducidas al español; permiten leer la posición general de actor 1 y actor 2.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-b",
+          div(class = "gloss-node-title", "Interacción"),
+          div(class = "gloss-node-main", "Tipo de interacción entre actores"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "interaction"), "Resume la combinación de tipos de actores que co-ocurren en el evento; si solo aparece un tipo, se etiqueta como Solo + categoría.")
+        )
+      ),
+      div(
+        class = "gloss-flow",
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Asociados limpios"),
+          div(class = "gloss-node-main", "Detalle asociado"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "assoc_actor_1_detalle"), tags$span(class = "gloss-chip", "assoc_actor_2_detalle"), "Versión final de los actores asociados originales: traducida, limpiada, en formato título y con Sin Actor Asociado cuando no hay dato.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-b",
+          div(class = "gloss-node-title", "Agrupación propia"),
+          div(class = "gloss-node-main", "Tipo sociopolítico"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "assoc_actor_1_tipo"), tags$span(class = "gloss-chip", "assoc_actor_2_tipo"), "Clasificación creada para esta app en 11 grupos, incluyendo Sin Registro, Estado y Fuerza Pública, Grupos Criminales y PPL, Sociedad Civil y otros sectores.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Trazabilidad"),
+          div(class = "gloss-node-main", "Fuente y notas limpias"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "fuente_principal"), tags$span(class = "gloss-chip", "notes_clean"), "Campos derivados de source y notes para conservar trazabilidad sin arrastrar texto crudo, referencias finales o saltos de línea.")
+        )
+      ),
+      div(
+        class = "gloss-flow",
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Tiempo"),
+          div(class = "gloss-node-main", "Fecha del evento"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "event_date"), "Día exacto reportado del hecho (formato año-mes-día).")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-b",
+          div(class = "gloss-node-title", "Territorio"),
+          div(class = "gloss-node-main", "Ubicación administrativa y local"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "admin1"), tags$span(class = "gloss-chip", "location"), "Permite analizar dónde ocurre el evento: provincia y localidad reportada.")
+        ),
+        div(class = "gloss-arrow", "→"),
+        div(
+          class = "gloss-node gloss-node-alt-a",
+          div(class = "gloss-node-title", "Severidad"),
+          div(class = "gloss-node-main", "Fatalidades y riesgo"),
+          div(class = "gloss-node-sub", tags$span(class = "gloss-chip", "fatalities"), "Muertes reportadas o estimadas asociadas al evento; en esta app se usan además para tasas comparables por población.")
+        )
+      ),
+      separador(),
+      div(class = "gloss-section-title", "Variables nuevas y transformadas en esta app"),
+      div(
+        class = "gloss-section-desc",
+        "Aquí se separa explícitamente el antes y después: a la izquierda están las variables transformadas del ACLED original (principalmente traducción/estandarización del inglés al español), y a la derecha las variables nuevas creadas para mejorar interpretación y análisis."
+      ),
+      div(
+        class = "change-grid",
+        div(
+          class = "change-card transformed",
+          div(class = "gloss-subtitle", "Transformadas del dataset original"),
+          div(class = "change-lead", "Variables existentes en ACLED que fueron traducidas, limpiadas o estandarizadas para facilitar lectura en español y consistencia analítica."),
+          tags$ul(
+            class = "change-list",
+            tags$li(HTML('<span class="gloss-chip">disorder_type / event_type / sub_event_type</span> Traducción y armonización del inglés al español; <code>disorder_type</code> conserva la categoría primaria antes de ";".')),
+            tags$li(HTML('<span class="gloss-chip">actor1 / actor2</span> Normalización de nombres (siglas y variantes) para mejorar comparabilidad.')),
+            tags$li(HTML('<span class="gloss-chip">inter1 / inter2</span> Tipos canónicos de actor traducidos desde ACLED y conservados en el CSV final.')),
+            tags$li(HTML('<span class="gloss-chip">interaction</span> Estandarización de etiquetas para lectura clara de vínculos actor-actor, incluyendo casos "Solo".')),
+            tags$li(HTML('<span class="gloss-chip">admin1 / admin2 / location</span> Correcciones ortográficas y de formato territorial (tildes y mayúsculas).'))
+          )
+        ),
+        div(
+          class = "change-card new",
+          div(class = "gloss-subtitle", "Nuevas variables creadas en esta app"),
+          div(class = "change-lead", "Campos derivados por Mayari Tapia para análisis temporal, sociopolítico y de calidad de dato sobre Ecuador 2018-2025."),
+          tags$ul(
+            class = "change-list",
+            tags$li(HTML('<span class="gloss-chip">year_month / month_name / day_of_week</span> Derivadas de la fecha para series temporales y estacionalidad.')),
+            tags$li(HTML('<span class="gloss-chip">assoc_actor_1_detalle / assoc_actor_2_detalle</span> Versión depurada del actor asociado original.')),
+            tags$li(HTML('<span class="gloss-chip">assoc_actor_1_tipo / assoc_actor_2_tipo</span> Clasificación propia de actores asociados en 11 sectores sociopolíticos.')),
+            tags$li(HTML('<span class="gloss-chip">tiene_fatalidades / nivel_fatalidades</span> Indicador y escala ordinal para severidad letal.')),
+            tags$li(HTML('<span class="gloss-chip">crowd_size / crowd_size_raw</span> Estandarización y trazabilidad del tamaño de multitud.')),
+            tags$li(HTML('<span class="gloss-chip">fuente_principal / notes_clean / violencia_genero</span> Campos de trazabilidad, limpieza textual y clasificación temática.'))
+          )
+        )
+      )
+    )
+  ),
+  
+  nav_spacer(),
+  nav_item(
+    tags$span(style = "font-size:10px; color:rgba(255,255,255,.38); font-family:'IBM Plex Mono',monospace; padding:0 8px;",
+              "ACLED · Ecuador · 2018–2025")
+  )
+)
+
+# ==============================================================================
+# SERVER
+# ==============================================================================
+server <- function(input, output, session) {
+  
+  # Descarga del CSV
+  output$descargar_csv <- downloadHandler(
+    filename = function() {
+      paste0("acled_ecuador_maestro_", format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
+      readr::write_csv(datos |> mutate(across(where(is.factor), as.character)), file)
+    }
+  )
+  
+  # ---------- Reactives comunes ----------
+  datos_temporal <- reactive({
+    d <- datos
+    if (!is.null(input$temporal_anios)) {
+      d <- d |> filter(year >= input$temporal_anios[1], year <= input$temporal_anios[2])
+    }
+    if (!is.null(input$temporal_tipo) && input$temporal_tipo != "Todos") {
+      d <- d |> filter(as.character(disorder_type) == input$temporal_tipo)
+    }
+    d
+  })
+  
+  datos_geo <- reactive({
+    d <- datos
+    if (!is.null(input$geo_anio) && input$geo_anio != "Todos") {
+      d <- d |> filter(year == as.integer(input$geo_anio))
+    }
+    if (!is.null(input$geo_tipo) && input$geo_tipo != "Todos") {
+      d <- d |> filter(as.character(event_type) == input$geo_tipo)
+    }
+    d
+  })
+  
+  datos_actores_base <- reactive({
+    d <- datos
+    if (!is.null(input$actores_anios)) {
+      d <- d |> filter(year >= input$actores_anios[1], year <= input$actores_anios[2])
+    }
+    if (!is.null(input$actores_provincia) && input$actores_provincia != "Todas") {
+      d <- d |> filter(as.character(admin1) == input$actores_provincia)
+    }
+    d
+  })
+  
+  # Reset filtros
+  observeEvent(input$btn_reset_temporal, {
+    updateSliderInput(session, "temporal_anios", value = c(min(datos$year), max(datos$year)))
+    updateSelectInput(session, "temporal_tipo", selected = "Todos")
+  })
+  observeEvent(input$btn_reset_geo, {
+    updateSelectInput(session, "geo_anio", selected = "Todos")
+    updateSelectInput(session, "geo_tipo", selected = "Todos")
+  })
+  observeEvent(input$btn_reset_actores, {
+    updateSliderInput(session, "actores_anios", value = c(min(datos$year), max(datos$year)))
+    updateSelectInput(session, "actores_provincia", selected = "Todas")
+    updateRadioButtons(session, "g1_actor_col", selected = "actor1")
+    updateSelectInput(session, "g1_actor_sel", selected = "Todos")
+    updateRadioButtons(session, "g2_tipo_col", selected = "assoc_actor_1_tipo")
+  })
+  
+  # ==========================================================================
+  # INICIO 
+  # ==========================================================================
+  output$g1_home_chips <- renderUI({
+    tipos <- levels(datos$disorder_type)
+    tagList(
+      div(class = "chip-wrap",
+          tags$span(class = "chip-btn-all", id = "chip_all_home_g1", onclick = "activarTodosHomeG1()", "Todos"),
+          lapply(seq_along(tipos), function(i) {
+            color <- paleta_disorder[[tipos[i]]]
+            tags$span(class = "chip-btn chip-on", id = paste0("chip_home_g1_", i), style = paste0("background:", color, "; border-color:", color, ";"), `data-tipo` = tipos[i], `data-color` = color, onclick = paste0("toggleChipHomeG1(this, '", tipos[i], "')"), tipos[i])
+          })
+      ),
+      tags$script(HTML(paste0("
+        var homeG1Activos = new Set(", jsonlite::toJSON(tipos, auto_unbox = FALSE), ");
+        function toggleChipHomeG1(el, tipo) {
+          if (homeG1Activos.has(tipo)) {
+            if (homeG1Activos.size <= 1) return;
+            homeG1Activos.delete(tipo);
+            el.classList.remove('chip-on'); el.style.background = '#f8f9fb'; el.style.borderColor = '#eaecf0'; el.style.color = '#546e7a';
+          } else {
+            homeG1Activos.add(tipo);
+            el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff';
+          }
+          Shiny.setInputValue('home_g1_activos', Array.from(homeG1Activos), {priority: 'event'});
+        }
+        function activarTodosHomeG1() {
+          document.querySelectorAll('[id^=chip_home_g1_]').forEach(function(el) {
+            homeG1Activos.add(el.dataset.tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff';
+          });
+          Shiny.setInputValue('home_g1_activos', Array.from(homeG1Activos), {priority: 'event'});
+        }
+      ")))
+    )
+  })
+  
+  output$g1_home_lineas <- renderPlotly({
+    hitos <- tibble(fecha = as.Date(c("2019-10-01", "2022-06-13", "2023-01-09", "2024-04-21")), label = c("Paro Oct. 2019", "Paro Jun. 2022", "Crisis carcelaria", "Estado excepcion 2024"))
+    tipos_activos <- if (is.null(input$home_g1_activos)) levels(datos$disorder_type) else input$home_g1_activos
+    datos_g1 <- datos |> filter(as.character(disorder_type) %in% tipos_activos) |> count(year_month, disorder_type, name = "eventos") |> mutate(disorder_type = as.character(disorder_type))
+    shiny::validate(shiny::need(nrow(datos_g1) > 0, "No hay datos para la selección."))
+    p <- ggplot(datos_g1, aes(x = year_month, y = eventos, color = disorder_type, group = disorder_type, text = paste0(format(year_month, "%b %Y"), "<br>", disorder_type, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 1.1, alpha = 0.9) +
+      geom_vline(data = hitos, aes(xintercept = as.numeric(fecha)), color = col_gris, linewidth = 0.6, linetype = "dashed", alpha = 0.7, inherit.aes = FALSE) +
+      scale_color_manual(values = paleta_disorder, name = NULL) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+      scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.25, x = 0, font = list(size = 11)),
+                                            shapes = lapply(seq_len(nrow(hitos)), function(i) list(type = "line", x0 = as.character(hitos$fecha[i]), x1 = as.character(hitos$fecha[i]), y0 = 0, y1 = 1, yref = "paper", line = list(color = "#546e7a", dash = "dot", width = 1))),
+                                            annotations = lapply(seq_len(nrow(hitos)), function(i) list(x = as.character(hitos$fecha[i]), y = 0.97, xref = "x", yref = "paper", text = paste0("<b>", hitos$label[i], "</b>"), showarrow = FALSE, bgcolor = "#0d1f2d", bordercolor = "#0d1f2d", borderwidth = 1, borderpad = 4, font = list(size = 9, color = "#ffffff"), xanchor = "left")),
+                                            margin = list(b = 80)) |> plotly_solo_tooltip()
+  })
+  
+  output$g_disorder_heatmap <- renderPlotly({
+    datos_hm <- datos |> count(year, disorder_type, name = "eventos") |> mutate(disorder_type = as.character(disorder_type), year = factor(year))
+    p <- ggplot(datos_hm, aes(x = year, y = disorder_type, fill = eventos, text = paste0(disorder_type, " | ", year, ": ", eventos, " eventos"))) +
+      geom_tile(color = "white", linewidth = 0.4) + scale_fill_gradient(low = col_teal_bg, high = col_teal, labels = comma, name = "Eventos") +
+      labs(x = NULL, y = NULL) + tema_acled() + theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 9), legend.position = "right")
+    ggplotly(p, tooltip = "text") |> layout(margin = list(l = 160)) |> plotly_solo_tooltip()
+  })
+  
+  output$g_event_chips <- renderUI({
+    tipos <- levels(datos$event_type)
+    paleta_event_local <- hacer_paleta_dinamica(datos, event_type)
+    tagList(
+      div(class = "chip-wrap", tags$span(class = "chip-btn-all", id = "chip_all_event", onclick = "activarTodosEvent()", "Todos"),
+          lapply(seq_along(tipos), function(i) {
+            color <- paleta_event_local[[tipos[i]]]
+            tags$span(class = "chip-btn chip-on", id = paste0("chip_event_", i), style = paste0("background:", color, "; border-color:", color, ";"), `data-tipo` = tipos[i], `data-color` = color, onclick = paste0("toggleChipEvent(this, '", tipos[i], "')"), tipos[i])
+          })),
+      tags$script(HTML(paste0("var eventActivos = new Set(", jsonlite::toJSON(tipos, auto_unbox = FALSE), "); function toggleChipEvent(el, tipo) { if (eventActivos.has(tipo)) { if (eventActivos.size <= 1) return; eventActivos.delete(tipo); el.classList.remove('chip-on'); el.style.background = '#f8f9fb'; el.style.borderColor = '#eaecf0'; el.style.color = '#546e7a'; } else { eventActivos.add(tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; } Shiny.setInputValue('event_activos', Array.from(eventActivos), {priority: 'event'}); } function activarTodosEvent() { document.querySelectorAll('[id^=chip_event_]').forEach(function(el) { eventActivos.add(el.dataset.tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; }); Shiny.setInputValue('event_activos', Array.from(eventActivos), {priority: 'event'}); }")))
+    )
+  })
+  
+  output$g_event_lineas <- renderPlotly({
+    tipos_activos <- if (is.null(input$event_activos)) levels(datos$event_type) else input$event_activos
+    datos_line <- datos |> filter(as.character(event_type) %in% tipos_activos) |> count(year_month, event_type, name = "eventos") |> mutate(event_type = as.character(event_type))
+    shiny::validate(shiny::need(nrow(datos_line) > 0, "No hay datos."))
+    paleta_event_local <- hacer_paleta_dinamica(datos, event_type)
+    p <- ggplot(datos_line, aes(x = year_month, y = eventos, color = event_type, group = event_type, text = paste0(format(year_month, "%b %Y"), "<br>", event_type, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 1.0, alpha = 0.85) + scale_color_manual(values = paleta_event_local, name = NULL) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") + scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 8))
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.25, x = 0, font = list(size = 9))) |> plotly_solo_tooltip()
+  })
+  
+  output$g_event_heatmap <- renderPlotly({
+    datos_hm <- datos |> count(year, event_type, name = "eventos") |> mutate(event_type = as.character(event_type), year = factor(year))
+    p <- ggplot(datos_hm, aes(x = year, y = event_type, fill = eventos, text = paste0(event_type, " | ", year, ": ", eventos, " eventos"))) +
+      geom_tile(color = "white", linewidth = 0.4) + scale_fill_gradient(low = col_teal_bg, high = col_teal, labels = comma, name = "Eventos") +
+      labs(x = NULL, y = NULL) + tema_acled() + theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 9), legend.position = "right")
+    ggplotly(p, tooltip = "text") |> layout(margin = list(l = 160)) |> plotly_solo_tooltip()
+  })
+  
+  output$gsub_home_chips <- renderUI({
+    subs <- levels(datos$sub_event_type)
+    paleta_sub_local <- setNames(colorRampPalette(paleta_app)(length(subs)), subs)
+    tagList(
+      div(class = "chip-wrap", tags$span(class = "chip-btn-all", id = "chip_all_home_sub", onclick = "activarTodosHomeSub()", "Todos"),
+          lapply(seq_along(subs), function(i) {
+            color <- paleta_sub_local[[subs[i]]]
+            tags$span(class = "chip-btn chip-on", id = paste0("chip_home_sub_", i), style = paste0("background:", color, "; border-color:", color, ";"), `data-tipo` = subs[i], `data-color` = color, onclick = paste0("toggleChipHomeSub(this, '", subs[i], "')"), subs[i])
+          })),
+      tags$script(HTML(paste0("var homeSubActivos = new Set(", jsonlite::toJSON(subs, auto_unbox = FALSE), "); function toggleChipHomeSub(el, tipo) { if (homeSubActivos.has(tipo)) { if (homeSubActivos.size <= 1) return; homeSubActivos.delete(tipo); el.classList.remove('chip-on'); el.style.background = '#f8f9fb'; el.style.borderColor = '#eaecf0'; el.style.color = '#546e7a'; } else { homeSubActivos.add(tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; } Shiny.setInputValue('home_gsub_activos', Array.from(homeSubActivos), {priority: 'event'}); } function activarTodosHomeSub() { document.querySelectorAll('[id^=chip_home_sub_]').forEach(function(el) { homeSubActivos.add(el.dataset.tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; }); Shiny.setInputValue('home_gsub_activos', Array.from(homeSubActivos), {priority: 'event'}); }")))
+    )
+  })
+  
+  output$gsub_home_lineas <- renderPlotly({
+    subs <- levels(datos$sub_event_type)
+    paleta_sub_local <- setNames(colorRampPalette(paleta_app)(length(subs)), subs)
+    subs_activos <- if (is.null(input$home_gsub_activos)) subs else input$home_gsub_activos
+    datos_sub <- datos |> filter(as.character(sub_event_type) %in% subs_activos) |> count(year_month, sub_event_type, name = "eventos") |> mutate(sub_event_type = as.character(sub_event_type))
+    shiny::validate(shiny::need(nrow(datos_sub) > 0, "No hay datos."))
+    p <- ggplot(datos_sub, aes(x = year_month, y = eventos, color = sub_event_type, group = sub_event_type, text = paste0(format(year_month, "%b %Y"), "<br>", sub_event_type, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 0.9, alpha = 0.85) + scale_color_manual(values = paleta_sub_local, name = NULL) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") + scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 8))
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.3, x = 0, font = list(size = 9))) |> plotly_solo_tooltip()
+  })
+  
+  output$gsub_home_heatmap <- renderPlotly({
+    datos_hm <- datos |> count(year, sub_event_type, name = "eventos") |> mutate(sub_event_type = as.character(sub_event_type), year = factor(year))
+    p <- ggplot(datos_hm, aes(x = year, y = sub_event_type, fill = eventos, text = paste0(sub_event_type, " | ", year, ": ", eventos, " eventos"))) +
+      geom_tile(color = "white", linewidth = 0.4) + scale_fill_gradient(low = col_teal_bg, high = col_teal, labels = comma, name = "Eventos") +
+      scale_y_discrete(labels = function(x) stringr::str_wrap(x, 28)) + labs(x = NULL, y = NULL) + tema_acled() + theme(axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 9), legend.position = "right")
+    ggplotly(p, tooltip = "text") |> layout(margin = list(l = 160)) |> plotly_solo_tooltip()
+  })
+  
+  # ==========================================================================
+  # TEMPORALIDAD (igual)
+  # ==========================================================================
+  output$dato_dinamico_temporal <- renderUI({
+    d <- datos_temporal() |> count(year_month, sort = TRUE, name = "eventos") |> slice_head(n = 1)
+    if (!nrow(d)) return(chip_ui("No hay datos para la selección actual."))
+    chip_ui(glue("Pico mensual en la selección: {fecha_mes_es(d$year_month)} con {comma(d$eventos)} eventos."))
+  })
+  
+  output$g1_chips <- renderUI({
+    tipos <- levels(datos$disorder_type)
+    tagList(
+      div(class = "chip-wrap", tags$span(class = "chip-btn-all", id = "chip_all_g1", onclick = "activarTodosG1()", "Todos"),
+          lapply(seq_along(tipos), function(i) {
+            color <- paleta_disorder[[tipos[i]]]
+            tags$span(class = "chip-btn chip-on", id = paste0("chip_g1_", i), style = paste0("background:", color, "; border-color:", color, ";"), `data-tipo` = tipos[i], `data-color` = color, onclick = paste0("toggleChipG1(this, '", tipos[i], "')"), tipos[i])
+          })),
+      tags$script(HTML(paste0("var g1Activos = new Set(", jsonlite::toJSON(tipos, auto_unbox = FALSE), "); function toggleChipG1(el, tipo) { if (g1Activos.has(tipo)) { if (g1Activos.size <= 1) return; g1Activos.delete(tipo); el.classList.remove('chip-on'); el.style.background = '#f8f9fb'; el.style.borderColor = '#eaecf0'; el.style.color = '#546e7a'; } else { g1Activos.add(tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; } Shiny.setInputValue('g1_activos', Array.from(g1Activos), {priority: 'event'}); } function activarTodosG1() { document.querySelectorAll('[id^=chip_g1_]').forEach(function(el) { g1Activos.add(el.dataset.tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; }); Shiny.setInputValue('g1_activos', Array.from(g1Activos), {priority: 'event'}); }")))
+    )
+  })
+  
+  output$g1_lineas_disorder <- renderPlotly({
+    hitos <- tibble(fecha = as.Date(c("2019-10-01", "2022-06-13", "2023-01-09", "2024-04-21")), label = c("Paro Oct.", "Paro Jun.", "Crisis carcelaria", "Estado excepcion"))
+    tipos_activos <- if (is.null(input$g1_activos)) levels(datos$disorder_type) else input$g1_activos
+    datos_g1 <- datos_temporal() |> filter(as.character(disorder_type) %in% tipos_activos) |> count(year_month, disorder_type, name = "eventos") |> mutate(disorder_type = as.character(disorder_type))
+    shiny::validate(shiny::need(nrow(datos_g1) > 0, "No hay datos."))
+    p <- ggplot(datos_g1, aes(x = year_month, y = eventos, color = disorder_type, group = disorder_type, text = paste0(format(year_month, "%b %Y"), "<br>", disorder_type, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 1.1, alpha = 0.9) + geom_vline(data = hitos, aes(xintercept = as.numeric(fecha)), color = col_gris, linewidth = 0.6, linetype = "dashed", alpha = 0.7, inherit.aes = FALSE) +
+      scale_color_manual(values = paleta_disorder, name = NULL) + scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") + scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.25, x = 0, font = list(size = 11)),
+                                            shapes = lapply(seq_len(nrow(hitos)), function(i) list(type = "line", x0 = as.character(hitos$fecha[i]), x1 = as.character(hitos$fecha[i]), y0 = 0, y1 = 1, yref = "paper", line = list(color = "#546e7a", dash = "dot", width = 1))),
+                                            annotations = lapply(seq_len(nrow(hitos)), function(i) list(x = as.character(hitos$fecha[i]), y = 0.97, xref = "x", yref = "paper", text = paste0("<b>", hitos$label[i], "</b>"), showarrow = FALSE, bgcolor = "#0d1f2d", bordercolor = "#0d1f2d", borderwidth = 1, borderpad = 4, font = list(size = 9, color = "#ffffff"), xanchor = "left")),
+                                            margin = list(b = 80)) |> plotly_solo_tooltip()
+  })
+  
+  output$g2_heatmap <- renderPlotly({
+    p <- datos_temporal() |> count(year, month_name) |> ggplot(aes(x = month_name, y = factor(year), fill = n, text = paste0(year, " ", month_name, ": ", n, " eventos"))) +
+      geom_tile(color = "white", linewidth = 0.3) + scale_fill_gradient(low = col_teal_bg, high = col_teal, labels = comma, name = "Eventos") +
+      labs(x = NULL, y = NULL) + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  output$g3_diasemana <- renderPlotly({
+    p <- datos_temporal() |> count(day_of_week_es, event_type) |> ggplot(aes(x = day_of_week_es, y = n, fill = event_type, text = paste0(day_of_week_es, "<br>", event_type, ": ", n))) +
+      geom_col(position = "stack") + scale_fill_manual(values = paleta_event, name = NULL) + scale_y_continuous(labels = comma) +
+      labs(x = NULL, y = "Eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 8))
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  output$g_estacionalidad <- renderPlotly({
+    d <- datos_temporal() |> count(year, month_name, name = "n_month") |> group_by(month_name) |> summarise(promedio_eventos = mean(n_month, na.rm = TRUE), .groups = "drop")
+    p <- ggplot(d, aes(x = month_name, y = promedio_eventos, group = 1, text = paste0(month_name, "<br>Promedio: ", number(promedio_eventos, accuracy = 0.1), " eventos"))) + geom_line(color = col_teal, linewidth = 1.2) + geom_point(color = col_teal_dk, size = 2) +
+      labs(x = "Mes", y = "Promedio de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  output$g_tendencia_anual <- renderPlotly({
+    d <- datos_temporal() |> count(year, disorder_type, name = "eventos") |> mutate(disorder_type = as.character(disorder_type))
+    p <- ggplot(d, aes(x = factor(year), y = eventos, fill = disorder_type, text = paste0("Año: ", year, "<br>", disorder_type, ": ", comma(eventos), " eventos"))) + geom_col(position = "stack", width = 0.7) +
+      scale_fill_manual(values = paleta_disorder, name = "Tipo de conflicto") + labs(x = "Año", y = "Número de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # ==========================================================================
+  # GEOGRAFIA 
+  # ==========================================================================
+  output$chip_geo <- renderUI({
+    d <- datos_geo() |> group_by(admin1) |> summarise(eventos = n(), fatalidades = sum(fatalities, na.rm = TRUE), .groups = "drop") |> filter(eventos >= 10) |> mutate(tasa = fatalidades / eventos) |> slice_max(tasa, n = 1, with_ties = FALSE)
+    if (!nrow(d)) return(chip_ui("No hay suficientes observaciones para estimar letalidad relativa."))
+    chip_ui(glue("Mayor letalidad relativa: {d$admin1} con {round(d$tasa, 3)} fatalidades por evento."))
+  })
+  
+  output$mapa_puntos <- renderLeaflet({
+    d <- datos_geo() |> filter(is.finite(longitude), is.finite(latitude)) |> mutate(event_type_chr = as.character(event_type))
+    if (!nrow(d)) return(leaflet() |> addProviderTiles(providers$CartoDB.Positron) |> agregar_referencia_ecuador() |> ajustar_mapa_ecuador())
+    pal_pts <- colorFactor(unname(paleta_event), domain = names(paleta_event))
+    leaflet(d) |> addProviderTiles(providers$CartoDB.Positron) |>
+      agregar_referencia_ecuador() |>
+      addCircleMarkers(lng = ~longitude, lat = ~latitude, radius = 4, color = ~pal_pts(event_type_chr), fillColor = ~pal_pts(event_type_chr), fillOpacity = 0.55, stroke = FALSE, label = ~paste0(event_type_chr, " | ", admin1, " | ", format(event_date, "%d/%m/%Y"))) |>
+      addLegend(pal = pal_pts, values = ~event_type_chr, title = "Tipo de evento", opacity = 0.9, position = "bottomright") |>
+      ajustar_mapa_ecuador(d)
+  })
+  
+  output$mapa_puntos_sub <- renderLeaflet({
+    d <- datos_geo() |> filter(is.finite(longitude), is.finite(latitude)) |> mutate(sub_event_type_chr = as.character(sub_event_type))
+    if (!nrow(d)) return(leaflet() |> addProviderTiles(providers$CartoDB.Positron) |> agregar_referencia_ecuador() |> ajustar_mapa_ecuador())
+    pal_sub_geo <- colorFactor(paleta_sub, domain = levels(datos$sub_event_type))
+    leaflet(d) |> addProviderTiles(providers$CartoDB.Positron) |>
+      agregar_referencia_ecuador() |>
+      addCircleMarkers(lng = ~longitude, lat = ~latitude, radius = 4, color = ~pal_sub_geo(sub_event_type_chr), fillColor = ~pal_sub_geo(sub_event_type_chr), fillOpacity = 0.55, stroke = FALSE, label = ~paste0(sub_event_type_chr, " | ", admin1, " | ", format(event_date, "%d/%m/%Y"))) |>
+      addLegend(pal = pal_sub_geo, values = ~sub_event_type_chr, title = "Sub-tipo de evento", opacity = 0.9, position = "bottomright") |>
+      ajustar_mapa_ecuador(d)
+  })
+  
+  output$mapa_provincias <- renderLeaflet({
+    ecuador_sf <- capa_ecuador()
+    shiny::validate(shiny::need(!is.null(ecuador_sf), "No se pudo cargar la capa provincial."))
+    nombre_col <- c("name", "name_en", "gn_name") |> intersect(names(ecuador_sf)) |> first()
+    eventos_prov <- datos_geo() |> count(admin1, name = "eventos") |> mutate(key = sin_tildes(as.character(admin1)))
+    mapa <- ecuador_sf |> mutate(display_name = .data[[nombre_col]], key = sin_tildes(display_name)) |> left_join(eventos_prov, by = "key")
+    pal <- colorNumeric(c("#edf8f5", col_teal_lt, col_teal, "#0f7a5a"), mapa$eventos, na.color = "#f1f3f4")
+    leaflet(mapa) |> addProviderTiles(providers$CartoDB.Positron) |>
+      addPolygons(fillColor = ~pal(eventos), fillOpacity = 0.82, color = "#ffffff", weight = 1, label = ~paste0(display_name, ": ", ifelse(is.na(eventos), 0, eventos), " eventos"), highlightOptions = highlightOptions(weight = 2, color = col_navy, fillOpacity = 0.92, bringToFront = TRUE)) |>
+      addLegend(pal = pal, values = ~eventos, title = "Eventos", opacity = 0.8, position = "bottomright") |>
+      fitBounds(lng1 = -92.2, lat1 = -5.2, lng2 = -75.0, lat2 = 1.8)
+  })
+  
+  datos_prov <- reactive({
+    d <- datos_geo()
+    if (input$geo_provincia != "Todas") d <- d |> filter(as.character(admin1) == input$geo_provincia)
+    d
+  })
+  
+  output$g_prov_event <- renderPlotly({
+    d <- datos_prov() |> count(event_type, name = "eventos") |> arrange(desc(eventos)) |>
+      mutate(tooltip = glue("<b>{as.character(event_type)}</b><br>Eventos: <b>{comma(eventos)}</b>"))
+    plot_ly(d, x = ~eventos, y = ~fct_reorder(event_type, eventos), type = "bar", orientation = "h", text = ~tooltip, hovertemplate = "%{text}<extra></extra>", marker = list(color = col_teal)) |>
+      layout(title = "", xaxis = list(title = "Eventos"), yaxis = list(title = ""), margin = list(l = 120)) |>
+      plotly_solo_tooltip()
+  })
+  
+  output$g_prov_subevent <- renderPlotly({
+    d <- datos_prov() |> count(sub_event_type, name = "eventos") |> arrange(desc(eventos)) |> slice_head(n = 15) |>
+      mutate(tooltip = glue("<b>{as.character(sub_event_type)}</b><br>Eventos: <b>{comma(eventos)}</b>"))
+    plot_ly(d, x = ~eventos, y = ~fct_reorder(sub_event_type, eventos), type = "bar", orientation = "h", text = ~tooltip, hovertemplate = "%{text}<extra></extra>", marker = list(color = col_indigo)) |>
+      layout(title = "", xaxis = list(title = "Eventos"), yaxis = list(title = ""), margin = list(l = 160)) |>
+      plotly_solo_tooltip()
+  })
+  
+  output$g_prov_disorder <- renderPlotly({
+    d <- datos_prov() |> count(disorder_type, name = "eventos") |> arrange(desc(eventos)) |>
+      mutate(tooltip = glue("<b>{as.character(disorder_type)}</b><br>Eventos: <b>{comma(eventos)}</b>"))
+    plot_ly(d, x = ~eventos, y = ~fct_reorder(disorder_type, eventos), type = "bar", orientation = "h", text = ~tooltip, hovertemplate = "%{text}<extra></extra>", marker = list(color = col_coral)) |>
+      layout(title = "", xaxis = list(title = "Eventos"), yaxis = list(title = ""), margin = list(l = 120)) |>
+      plotly_solo_tooltip()
+  })
+  
+  # ==========================================================================
+  # CONFLICTOS 
+  # ==========================================================================
+  output$chip_actores <- renderUI({
+    d <- datos_actores_base() |> filter(!is.na(actor1), actor1 != "") |> count(actor1, sort = TRUE, name = "eventos") |> slice_head(n = 1)
+    if (!nrow(d)) return(chip_ui("No hay actores principales identificables."))
+    chip_ui(glue("Actor más frecuente en la selección: {d$actor1} ({comma(d$eventos)} eventos)."))
+  })
+  
+  actores_g1_freq <- reactive({
+    col_actor <- if (is.null(input$g1_actor_col)) "actor1" else input$g1_actor_col
+    datos_actores_base() |> filter(!is.na(.data[[col_actor]]), as.character(.data[[col_actor]]) != "") |> count(actor = as.character(.data[[col_actor]]), name = "n") |> arrange(desc(n))
+  })
+  
+  observeEvent(list(input$g1_actor_col, datos_actores_base()), {
+    d_act <- actores_g1_freq()
+    actores <- d_act$actor
+    actual <- isolate(input$g1_actor_sel)
+    selected <- if (!is.null(actual) && actual %in% c("Todos", actores)) actual else "Todos"
+    updateSelectInput(session, "g1_actor_sel", choices = c("Todos", actores), selected = selected)
+  }, ignoreInit = FALSE)
+  
+  output$g1_actores_lineas <- renderPlotly({
+    col_actor <- if (is.null(input$g1_actor_col)) "actor1" else input$g1_actor_col
+    d_act <- actores_g1_freq()
+    actores_disponibles <- d_act$actor
+    if (!length(actores_disponibles)) return(plotly_empty(type = "scatter", mode = "lines") |> layout(title = "No hay actores disponibles."))
+    actor_sel <- if (is.null(input$g1_actor_sel)) "Todos" else input$g1_actor_sel
+    actores_sel <- if (identical(actor_sel, "Todos")) head(actores_disponibles, 10) else actor_sel
+    d_sel <- datos_actores_base() |> filter(!is.na(.data[[col_actor]]), as.character(.data[[col_actor]]) %in% actores_sel) |> count(year_month, actor = as.character(.data[[col_actor]]), name = "eventos")
+    shiny::validate(shiny::need(nrow(d_sel) > 0, "No hay datos para la selección."))
+    paleta_ac <- setNames(colorRampPalette(c(col_teal, col_indigo, col_coral, col_amber))(length(actores_sel)), actores_sel)
+    p <- ggplot(d_sel, aes(x = year_month, y = eventos, color = actor, group = actor, text = paste0(format(year_month, "%b %Y"), "<br>", actor, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 1.0, alpha = 0.88) + scale_color_manual(values = paleta_ac, name = "Actor") +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") + scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 8))
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.3, x = 0, font = list(size = 9)), margin = list(b = 80)) |> plotly_solo_tooltip()
+  })
+  
+  tipos_g2 <- reactive({
+    col_tipo <- if (is.null(input$g2_tipo_col)) "assoc_actor_1_tipo" else input$g2_tipo_col
+    datos_actores_base() |> filter(!is.na(.data[[col_tipo]]), as.character(.data[[col_tipo]]) != "") |> count(tipo = as.character(.data[[col_tipo]]), name = "n") |> arrange(desc(n)) |> pull(tipo)
+  })
+  
+  output$g2_tipo_chips <- renderUI({
+    tipos <- tipos_g2()
+    if (!length(tipos)) return(div(class = "note", "No hay tipos disponibles."))
+    paleta_tipo <- setNames(colorRampPalette(c(col_indigo, col_magenta, col_amber, col_coral, col_teal))(length(tipos)), tipos)
+    tagList(
+      div(class = "chip-wrap", tags$span(class = "chip-btn-all", id = "chip_all_tipo", onclick = "activarTodosTipo()", "Todos"),
+          lapply(seq_along(tipos), function(i) {
+            color <- paleta_tipo[[tipos[i]]]
+            tags$span(class = "chip-btn chip-on", id = paste0("chip_tipo_", i), style = paste0("background:", color, "; border-color:", color, ";"), `data-tipo` = tipos[i], `data-color` = color, onclick = paste0("toggleChipTipo(this, '", gsub("'", "\\\\'", tipos[i]), "')"), tipos[i])
+          })),
+      tags$script(HTML(paste0("var tipoActivos = new Set(", jsonlite::toJSON(tipos, auto_unbox = FALSE), "); function toggleChipTipo(el, tipo) { if (tipoActivos.has(tipo)) { if (tipoActivos.size <= 1) return; tipoActivos.delete(tipo); el.classList.remove('chip-on'); el.style.background = '#f8f9fb'; el.style.borderColor = '#eaecf0'; el.style.color = '#546e7a'; } else { tipoActivos.add(tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; } Shiny.setInputValue('g2_tipo_activos', Array.from(tipoActivos), {priority: 'event'}); } function activarTodosTipo() { document.querySelectorAll('[id^=chip_tipo_]').forEach(function(el) { tipoActivos.add(el.dataset.tipo); el.classList.add('chip-on'); el.style.background = el.dataset.color; el.style.borderColor = el.dataset.color; el.style.color = '#fff'; }); Shiny.setInputValue('g2_tipo_activos', Array.from(tipoActivos), {priority: 'event'}); } Shiny.setInputValue('g2_tipo_activos', Array.from(tipoActivos), {priority: 'event'});")))
+    )
+  })
+  
+  output$g2_tipo_lineas <- renderPlotly({
+    col_tipo <- if (is.null(input$g2_tipo_col)) "assoc_actor_1_tipo" else input$g2_tipo_col
+    tipos_disponibles <- tipos_g2()
+    if (!length(tipos_disponibles)) return(plotly_empty(type = "scatter", mode = "lines") |> layout(title = "No hay tipos disponibles."))
+    tipos_sel <- if (is.null(input$g2_tipo_activos)) tipos_disponibles else intersect(input$g2_tipo_activos, tipos_disponibles)
+    if (!length(tipos_sel) && length(tipos_disponibles)) tipos_sel <- tipos_disponibles
+    d <- datos_actores_base() |> filter(!is.na(.data[[col_tipo]]), as.character(.data[[col_tipo]]) %in% tipos_sel) |> count(year_month, tipo = as.character(.data[[col_tipo]]), name = "eventos")
+    shiny::validate(shiny::need(nrow(d) > 0, "No hay datos para la selección."))
+    paleta_tipo <- setNames(colorRampPalette(c(col_indigo, col_magenta, col_amber, col_coral, col_teal))(length(tipos_sel)), tipos_sel)
+    p <- ggplot(d, aes(x = year_month, y = eventos, color = tipo, group = tipo, text = paste0(format(year_month, "%b %Y"), "<br>", tipo, ": ", eventos, " eventos"))) +
+      geom_line(linewidth = 1.0, alpha = 0.88) + scale_color_manual(values = paleta_tipo, name = NULL) +
+      scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") + scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.08))) +
+      labs(x = NULL, y = "N de eventos") + tema_acled() + theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 8))
+    ggplotly(p, tooltip = "text") |> layout(hovermode = "x unified", legend = list(orientation = "h", y = -0.3, x = 0, font = list(size = 9)), margin = list(b = 80)) |> plotly_solo_tooltip()
+  })
+  
+  output$g_red <- renderVisNetwork({
+    aristas <- datos_actores_base() |> filter(!is.na(actor1), !is.na(actor2), actor1 != "", actor2 != "") |> count(actor1, actor2, name = "weight", sort = TRUE) |> slice_head(n = 70)
+    if (!nrow(aristas)) return(visNetwork(data.frame(id = "sin_datos", label = "Sin datos"), data.frame(from = character(), to = character())) |> visNodes(shape = "dot", color = list(background = col_gris, border = col_navy)) |> visPhysics(enabled = FALSE))
+    nodos <- bind_rows(aristas |> transmute(name = as.character(actor1)), aristas |> transmute(name = as.character(actor2))) |> count(name, sort = TRUE, name = "frecuencia") |> slice_head(n = 22)
+    aristas_vis <- aristas |> filter(as.character(actor1) %in% nodos$name, as.character(actor2) %in% nodos$name) |> transmute(from = as.character(actor1), to = as.character(actor2), value = weight)
+    nodos_vis <- nodos |> transmute(id = name, label = str_wrap(name, 16), value = frecuencia)
+    visNetwork(nodos_vis, aristas_vis, height = "560px", width = "100%") |> visNodes(shape = "dot", color = list(background = col_teal, border = col_navy, highlight = list(background = col_coral, border = col_navy)), font = list(size = 14, color = col_texto)) |> visEdges(color = list(color = scales::alpha(col_gris, 0.5), highlight = col_indigo), smooth = FALSE) |> visOptions(highlightNearest = list(enabled = TRUE, hover = TRUE), nodesIdSelection = list(enabled = TRUE, main = "Filtrar por actor")) |> visLayout(randomSeed = 42) |> visPhysics(stabilization = list(iterations = 150))
+  })
+  
+  output$g_interaccion_barras <- renderPlotly({
+    d <- datos_actores_base() |> filter(!is.na(interaction)) |> count(interaction, name = "eventos") |> arrange(desc(eventos)) |> slice_head(n = 15)
+    shiny::validate(shiny::need(nrow(d) > 0, "No hay datos."))
+    colores_barras <- colorRampPalette(paleta_app)(nrow(d)); names(colores_barras) <- as.character(d$interaction)
+    plot_ly(d, x = ~eventos, y = ~fct_reorder(interaction, eventos), type = "bar", orientation = "h", marker = list(color = colores_barras[as.character(d$interaction)]), hovertemplate = "%{y}: %{x} eventos<extra></extra>") |>
+      layout(title = "", xaxis = list(title = "Eventos"), yaxis = list(title = ""), margin = list(l = 120), paper_bgcolor = col_tarjeta, plot_bgcolor = col_tarjeta) |> plotly_solo_tooltip()
+  })
+  
+  output$red_detalle <- renderVisNetwork({
+    aristas <- datos_actores_base() |> filter(!is.na(assoc_actor_1_detalle), !is.na(assoc_actor_2_detalle), assoc_actor_1_detalle != "", assoc_actor_2_detalle != "") |> count(assoc_actor_1_detalle, assoc_actor_2_detalle, name = "weight", sort = TRUE) |> slice_head(n = 70)
+    if (!nrow(aristas)) return(visNetwork(data.frame(id = "sin_datos", label = "Sin datos"), data.frame(from = character(), to = character())) |> visNodes(shape = "dot", color = list(background = col_gris, border = col_navy)) |> visPhysics(enabled = FALSE))
+    nodos <- bind_rows(aristas |> transmute(name = as.character(assoc_actor_1_detalle)), aristas |> transmute(name = as.character(assoc_actor_2_detalle))) |> count(name, sort = TRUE, name = "frecuencia") |> slice_head(n = 22)
+    aristas_vis <- aristas |> filter(as.character(assoc_actor_1_detalle) %in% nodos$name, as.character(assoc_actor_2_detalle) %in% nodos$name) |> transmute(from = as.character(assoc_actor_1_detalle), to = as.character(assoc_actor_2_detalle), value = weight)
+    nodos_vis <- nodos |> transmute(id = name, label = str_wrap(name, 16), value = frecuencia)
+    visNetwork(nodos_vis, aristas_vis, height = "500px", width = "100%") |> visNodes(shape = "dot", color = list(background = col_indigo, border = col_navy, highlight = list(background = col_coral, border = col_navy)), font = list(size = 14, color = col_texto)) |> visEdges(color = list(color = scales::alpha(col_gris, 0.5), highlight = col_amber), smooth = FALSE) |> visOptions(highlightNearest = list(enabled = TRUE, hover = TRUE), nodesIdSelection = list(enabled = TRUE, main = "Filtrar por detalle")) |> visLayout(randomSeed = 43) |> visPhysics(stabilization = list(iterations = 150))
+  })
+  
+  output$barras_detalle <- renderPlotly({
+    d <- datos_actores_base() |> filter(!is.na(assoc_actor_1_detalle), assoc_actor_1_detalle != "", !is.na(assoc_actor_2_detalle), assoc_actor_2_detalle != "") |> mutate(interaccion = paste(assoc_actor_1_detalle, "↔", assoc_actor_2_detalle)) |> count(interaccion, name = "eventos") |> arrange(desc(eventos)) |> slice_head(n = 15)
+    shiny::validate(shiny::need(nrow(d) > 0, "No hay interacciones."))
+    colores_barras <- colorRampPalette(paleta_app)(nrow(d)); names(colores_barras) <- d$interaccion
+    d <- d |> mutate(tooltip = glue("<b>{interaccion}</b><br>Eventos: <b>{comma(eventos)}</b>"))
+    plot_ly(d, x = ~eventos, y = ~fct_reorder(interaccion, eventos), type = "bar", orientation = "h", text = ~tooltip, hovertemplate = "%{text}<extra></extra>", marker = list(color = colores_barras[d$interaccion])) |>
+      layout(title = "", xaxis = list(title = "Número de eventos"), yaxis = list(title = ""), margin = list(l = 200), paper_bgcolor = col_tarjeta, plot_bgcolor = col_tarjeta) |> plotly_solo_tooltip()
+  })
+  
+  # ==========================================================================
+  # VIOLENCIA - NUEVOS OUTPUTS CORREGIDOS
+  # ==========================================================================
+  
+  # Reactivo base para violencia
+  df_v <- reactive({
+    datos |> filter(year >= input$viol_anios[1], year <= input$viol_anios[2])
+  })
+  
+  # KPIs
+  output$vb_fat_total <- renderText({
+    sum(df_v()$fatalities, na.rm = TRUE) |> format(big.mark = ",")
+  })
+  
+  output$vb_prov_riesgo <- renderText({
+    res <- df_v() |>
+      filter(!is.na(poblacion), poblacion > 0) |>
+      group_by(admin1, poblacion) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      mutate(tasa = (f / poblacion) * 100000) |>
+      slice_max(tasa, n = 1)
+    if (nrow(res) > 0) res$admin1 else "N/A"
+  })
+  
+  # G1: Heatmap provincial normalizado
+  output$gv1_heatmap_provincia <- renderPlotly({
+    df <- df_v() |>
+      group_by(admin1, year, poblacion) |>
+      summarise(fat = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      mutate(val = if(input$viol_metrica == "tasa") {
+        if_else(!is.na(poblacion) & poblacion > 0, (fat / poblacion) * 100000, NA_real_)
+      } else fat) |>
+      filter(!is.na(val))
+    
+    p <- ggplot(df, aes(x = factor(year), y = reorder(admin1, val), fill = val, text = paste0(admin1, "<br>Año: ", year, "<br>", if(input$viol_metrica == "tasa") "Tasa: " else "Fatalidades: ", comma(val)))) +
+      geom_tile(color = "white", linewidth = 0.4) +
+      scale_fill_gradient(low = "#fff5f5", high = col_coral_dk, labels = comma, name = if(input$viol_metrica == "tasa") "Tasa x 100k" else "Total fatalidades") +
+      labs(x = "Año", y = NULL) +
+      tema_acled() +
+      theme(axis.text.y = element_text(size = 9))
+    
+    ggplotly(p, tooltip = "text") |>
+      layout(margin = list(l = 140)) |>
+      plotly_solo_tooltip()
+  })
+  
+  # G2: Lollipop de sub-eventos
+  output$gv2_lollipop_subevento <- renderPlotly({
+    df <- df_v() |>
+      group_by(sub_event_type) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      filter(f > 0) |>
+      arrange(f) |>
+      mutate(sub_event_type = factor(as.character(sub_event_type), levels = as.character(sub_event_type)),
+             tooltip_text = glue("{sub_event_type}<br>Fatalidades: {comma(f)}"))
+    
+    p <- ggplot(df, aes(x = f, y = sub_event_type, text = tooltip_text)) +
+      geom_segment(aes(x = 0, xend = f, yend = sub_event_type, color = f), linewidth = 1.15, alpha = 0.85, show.legend = FALSE) +
+      geom_point(aes(color = f), size = 8, alpha = 0.95, show.legend = FALSE) +
+      geom_text(aes(label = comma(f)), hjust = -0.2, size = 3, color = col_texto) +
+      scale_color_gradient(low = col_teal_bg, high = col_teal_dk, guide = "none") +
+      scale_x_continuous(expand = expansion(mult = c(0, 0.15)), labels = comma) +
+      labs(x = "Total fatalidades", y = NULL) +
+      tema_acled() +
+      theme(panel.grid.major.y = element_blank())
+    
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # G4: Comparativa assoc_actor_1_tipo vs assoc_actor_2_tipo (resalta rol seleccionado)
+  output$gv4_comp_tipos_actor <- renderPlotly({
+    pos <- if (is.null(input$viol_pos_actor)) "actor1" else input$viol_pos_actor
+    rol_sel <- if (pos == "actor2") "Actor 2" else "Actor 1"
+    
+    df <- df_v() |>
+      select(assoc_actor_1_tipo, assoc_actor_2_tipo, fatalities) |>
+      pivot_longer(
+        cols = c(assoc_actor_1_tipo, assoc_actor_2_tipo),
+        names_to = "rol_col",
+        values_to = "tipo"
+      ) |>
+      mutate(
+        rol = if_else(rol_col == "assoc_actor_1_tipo", "Actor 1", "Actor 2")
+      ) |>
+      filter(!is.na(tipo), tipo != "", tipo != "Otros", fatalities > 0) |>
+      group_by(rol, tipo) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop")
+    shiny::validate(shiny::need(nrow(df) > 0, "No hay datos suficientes para comparar tipos de actor."))
+    
+    top_tipos <- df |>
+      group_by(tipo) |>
+      summarise(total = sum(f), .groups = "drop") |>
+      slice_max(total, n = 8, with_ties = FALSE) |>
+      arrange(total) |>
+      pull(tipo) |>
+      as.character()
+    shiny::validate(shiny::need(length(top_tipos) > 0, "No hay categorías de tipo de actor para mostrar."))
+    
+    df_plot <- df |>
+      filter(as.character(tipo) %in% top_tipos) |>
+      mutate(
+        tipo = factor(as.character(tipo), levels = top_tipos),
+        rol = factor(rol, levels = c("Actor 1", "Actor 2")),
+        destacado = if_else(as.character(rol) == rol_sel, "si", "no"),
+        tooltip_text = glue("{tipo}<br>{rol}<br>Fatalidades: {comma(f)}")
+      )
+    
+    p <- ggplot(df_plot, aes(x = f, y = tipo, fill = rol, alpha = destacado, text = tooltip_text)) +
+      geom_col(position = position_dodge(width = 0.72), width = 0.62) +
+      scale_fill_manual(values = c("Actor 1" = col_teal, "Actor 2" = col_indigo), name = NULL) +
+      scale_alpha_manual(values = c("si" = 0.95, "no" = 0.45), guide = "none") +
+      scale_x_continuous(expand = expansion(mult = c(0, 0.12)), labels = comma) +
+      labs(x = "Total fatalidades", y = NULL) +
+      tema_acled() +
+      theme(panel.grid.major.y = element_blank(),
+            legend.position = "top")
+    
+    ggplotly(p, tooltip = "text") |>
+      layout(barmode = "group") |>
+      plotly_solo_tooltip()
+  })
+  
+  # G5: Top 10 actores letales según posición seleccionada
+  output$gv5_barras_actor <- renderPlotly({
+    pos <- if (is.null(input$viol_pos_actor)) "actor1" else input$viol_pos_actor
+    df <- df_v() |>
+      group_by(actor = .data[[pos]]) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      filter(!is.na(actor), actor != "", f > 0) |>
+      slice_max(f, n = 10) |>
+      arrange(f) |>
+      mutate(actor = factor(actor, levels = actor),
+             tooltip_text = glue("{actor}<br>Fatalidades: {comma(f)}"))
+    
+    p <- ggplot(df, aes(x = f, y = actor, fill = f, text = tooltip_text)) +
+      geom_col(width = 0.7, alpha = 0.9) +
+      scale_fill_gradient(low = col_coral_bg, high = col_coral_dk, guide = "none") +
+      geom_text(aes(label = comma(f)), hjust = -0.2, size = 3, color = col_texto) +
+      scale_x_continuous(expand = expansion(mult = c(0, 0.12)), labels = comma) +
+      labs(x = "Total fatalidades", y = NULL) +
+      tema_acled() +
+      theme(panel.grid.major.y = element_blank())
+    
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # G3: Top 10 provincias con mayor letalidad (total o tasa)
+  output$gv6_top_provincias <- renderPlotly({
+    metrica <- input$viol_metrica
+    df <- df_v() |>
+      group_by(admin1, poblacion) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      mutate(val = if(metrica == "tasa") {
+        if_else(!is.na(poblacion) & poblacion > 0, (f / poblacion) * 100000, NA_real_)
+      } else f) |>
+      filter(!is.na(val), val > 0) |>
+      slice_max(val, n = 10) |>
+      arrange(val) |>
+      mutate(admin1 = factor(admin1, levels = admin1),
+             tooltip_text = if(metrica == "tasa") glue("{admin1}<br>Tasa: {round(val, 1)} por 100k hab.") else glue("{admin1}<br>Fatalidades: {comma(val)}"))
+    
+    p <- ggplot(df, aes(x = val, y = admin1, fill = val, text = tooltip_text)) +
+      geom_col(width = 0.7, alpha = 0.85) +
+      scale_fill_gradient(low = col_indigo_bg, high = col_indigo_dk, guide = "none") +
+      geom_text(aes(label = if(metrica == "tasa") round(val, 1) else comma(val)), hjust = -0.2, size = 3, color = col_texto) +
+      scale_x_continuous(
+        expand = expansion(mult = c(0, 0.12)),
+        labels = if(metrica == "tasa") function(x) number(x, accuracy = 0.1) else comma) +      
+      labs(x = if(metrica == "tasa") "Tasa por 100k habitantes" else "Total fatalidades", y = NULL) +
+      tema_acled() +
+      theme(panel.grid.major.y = element_blank())
+    
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # G6: Letalidad por tipo de actor asociado (excluyendo "Otros")
+  output$gv7_tipos_actor <- renderPlotly({
+    pos <- if (is.null(input$viol_pos_actor)) "actor1" else input$viol_pos_actor
+    col_tipo <- if (pos == "actor2") "assoc_actor_2_tipo" else "assoc_actor_1_tipo"
+    rol_actor <- if (pos == "actor2") "Actor 2" else "Actor 1"
+    
+    df <- df_v() |>
+      group_by(tipo = .data[[col_tipo]]) |>
+      summarise(f = sum(fatalities, na.rm = TRUE), .groups = "drop") |>
+      filter(!is.na(tipo), tipo != "", f > 0, tipo != "Otros") |>  # Excluir "Otros"
+      arrange(f) |>
+      mutate(tipo = factor(as.character(tipo), levels = as.character(tipo)),
+             tooltip_text = glue("{tipo}<br>Fatalidades: {comma(f)}<br>Rol: {rol_actor}"))
+    
+    p <- ggplot(df, aes(x = f, y = tipo, fill = f, text = tooltip_text)) +
+      geom_col(width = 0.7, alpha = 0.9) +
+      scale_fill_gradient(low = col_teal_bg, high = col_teal_dk, guide = "none") +
+      geom_text(aes(label = comma(f)), hjust = -0.2, size = 3, color = col_texto) +
+      scale_x_continuous(expand = expansion(mult = c(0, 0.12)), labels = comma) +
+      labs(x = "Total fatalidades", y = glue("Tipo de actor asociado ({rol_actor})")) +
+      tema_acled() +
+      theme(panel.grid.major.y = element_blank())
+    
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+}
+
+# ==============================================================================
+# EJECUTAR LA APP
+# ==============================================================================
+shinyApp(ui = ui, server = server)
