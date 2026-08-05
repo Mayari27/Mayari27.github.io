@@ -474,6 +474,7 @@ tabla_clasificacion_eventos <- function(datos, paleta_disorder) {
 }
 
 paleta_nivel <- c(
+  "Sin fatalidades" = "#e0faf4",
   "Baja (1)"    = "#fab8a8",
   "Media (2-3)" = "#e17055",
   "Alta (4-9)"  = "#b04030",
@@ -1611,7 +1612,7 @@ ui <- page_navbar(
   ),
   
   # ========================================================================== 
-  # VIOLENCIA - VERSION CORREGIDA (disposición vertical, gráficos ajustados)
+  # VIOLENCIA
   # ========================================================================== 
   nav_panel(
     "Violencia",
@@ -1621,7 +1622,6 @@ ui <- page_navbar(
       div(class = "page-sub", "Compara provincias, tipos de evento y actores usando totales y tasas normalizadas por población."),
       bloque_narrativo_fijo(nar_violencia, "coral"),
       
-      # Filtros globales
       div(
         class = "filter-wrap",
         layout_columns(
@@ -1636,7 +1636,6 @@ ui <- page_navbar(
         )
       ),
       
-      # KPIs
       layout_columns(
         col_widths = c(6, 6),
         kpi_card(
@@ -1655,23 +1654,18 @@ ui <- page_navbar(
         )
       ),
       
-      # G1: Heatmap provincial (normalizado)
       visual_card(
         "Mapa provincial: ¿dónde se concentra la letalidad?",
         plotlyOutput("gv1_heatmap_provincia", height = "450px"),
         desc = desc_viol_heatmap,
         note = txt_viol_heatmap
       ),
-      
-      # G2: Lollipop de sub-eventos
       visual_card(
         "¿Qué formas de conflicto concentran más muertes?",
         plotlyOutput("gv2_lollipop_subevento", height = "450px"),
         desc = desc_viol_lollipop,
         note = txt_viol_lollipop
       ),
-      
-      # G3: Top 10 provincias con mayor letalidad
       visual_card(
         "Top 10 de provincias con mayor letalidad",
         plotlyOutput("gv6_top_provincias", height = "400px"),
@@ -1690,23 +1684,18 @@ ui <- page_navbar(
                      inline = TRUE)
       ),
       
-      # G4: Comparativa de tipo de actor asociado (Actor 1 vs Actor 2)
       visual_card(
         "Comparativa de letalidad por tipo de actor",
         plotlyOutput("gv4_comp_tipos_actor", height = "420px"),
         desc = desc_viol_comp_actor,
         note = txt_viol_comp_actor
       ),
-      
-      # G5: Top 10 actores letales
       visual_card(
         "Top 10 de actores con mayor letalidad",
         plotlyOutput("gv5_barras_actor", height = "400px"),
         desc = desc_viol_top_actores,
         note = txt_viol_top_actores
       ),
-      
-      # G6: Letalidad por tipo de actor asociado (excluyendo "Otros")
       visual_card(
         "Fatalidades por sector de actor",
         plotlyOutput("gv7_tipos_actor", height = "400px"),
@@ -1716,6 +1705,70 @@ ui <- page_navbar(
     )
   ),
   
+  # ==========================================================================
+  # MEDIOS (NUEVA PÁGINA)
+  # ==========================================================================
+  nav_panel(
+    "Medios",
+    div(
+      class = "shell reading-body",
+      div(class = "page-title", "Cobertura mediática del conflicto"),
+      div(class = "page-sub", "Análisis de cómo los diferentes medios de comunicación cubren el conflicto, sus tipos, fatalidades y actores involucrados."),
+      
+      div(
+        class = "filter-wrap",
+        div(class = "filter-kicker", "Filtros globales (aplican a todos los gráficos)"),
+        layout_columns(
+          col_widths = c(5, 5, 2),
+          sliderInput("medios_anios", "Periodo", min(datos$year), max(datos$year), c(min(datos$year), max(datos$year)), sep = "", step = 1),
+          selectizeInput("medios_seleccion", "Medios de comunicación", choices = c("Todos", sort(unique(as.character(datos$fuente_principal)))), selected = "Todos", multiple = TRUE),
+          div(style = "display:flex;align-items:end;height:100%;", btn_reset("btn_reset_medios"))
+        )
+      ),
+      bloque_narrativo_fijo("A continuación se presentan tres dimensiones de la cobertura mediática. Puedes seleccionar años y medios específicos para ver cómo cambia el enfoque de cada fuente.", "indigo"),
+      
+      # GRÁFICO 1
+      visual_card(
+        "Sub-tipo de evento cubierto por medio",
+        tagList(
+          div(class = "filter-kicker", style = "margin-bottom:8px;", "Filtro personalizado para este gráfico"),
+          selectInput("medios_event_type", "Filtrar por tipo de evento", 
+                      choices = c("Todos", levels(datos$event_type)), 
+                      selected = "Todos"),
+          plotlyOutput("g1_medios_evento", height = "600px") # Gráfico más alto para mejor lectura
+        ),
+        desc = "Proporción de la cobertura de cada medio según el sub-tipo de evento específico. Al agrupar los subtipos menos frecuentes en 'Otros', el gráfico permite identificar el enfoque editorial a detalle.",
+        note = "Los colores representan el sub-tipo de evento. Selecciona un 'Tipo de evento' específico en el filtro para ver solo los subtipos de esa categoría."
+      ),
+      
+      # GRÁFICO 2
+      visual_card(
+        "Nivel de fatalidad por medio",
+        tagList(
+          div(class = "filter-kicker", style = "margin-bottom:8px;", "Filtro personalizado para este gráfico"),
+          selectInput("medios_nivel_fatalidad", "Filtrar por nivel de fatalidad", c("Todos", levels(datos$nivel_fatalidades)), selected = "Todos"),
+          plotlyOutput("g2_medios_fatalidad", height = "450px")
+        ),
+        desc = "Distribución porcentual del nivel de fatalidades reportado por cada medio. Esta métrica revela si algunos medios tienden a cubrir más eventos con muertes.",
+        note = "La categoría 'Sin fatalidades' suele ser la más grande, pero al excluirla o filtrar por niveles altos se puede ver la inclinación hacia la violencia letal."
+      ),
+      
+      # GRÁFICO 3
+      visual_card(
+        "Tipo de actor asociado por medio",
+        tagList(
+          div(class = "filter-kicker", style = "margin-bottom:8px;", "Filtro personalizado para este gráfico"),
+          plotlyOutput("g3_medios_actor", height = "600px") # Gráfico más alto para mejor lectura
+        ),
+        desc = "Porcentaje de menciones de cada tipo de actor asociado (Actor 1) por medio. Se ha excluido la categoría 'Otros Grupos' para enfocar la comparación en los actores sociales, políticos y estatales específicos.",
+        note = "Para mantener la legibilidad en pantalla, el gráfico muestra únicamente los 15 medios con mayor cobertura en el período seleccionado."
+      )
+    )
+  ),
+  
+  # ==========================================================================
+  # GLOSARIO
+  # ==========================================================================
   nav_panel(
     title = tagList(bsicons::bs_icon("journal-text"), " Glosario"),
     div(
@@ -2320,7 +2373,7 @@ server <- function(input, output, session) {
   })
   
   # ==========================================================================
-  # VIOLENCIA - NUEVOS OUTPUTS CORREGIDOS
+  # VIOLENCIA
   # ==========================================================================
   
   # Reactivo base para violencia
@@ -2518,6 +2571,197 @@ server <- function(input, output, session) {
       theme(panel.grid.major.y = element_blank())
     
     ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # ==========================================================================
+  # MEDIOS (NUEVO SERVER)
+  # ==========================================================================
+  
+  # Reactivo base para la sección Medios (Filtros Globales)
+  datos_medios <- reactive({
+    d <- datos
+    # Filtro de años
+    if (!is.null(input$medios_anios)) {
+      d <- d |> filter(year >= input$medios_anios[1], year <= input$medios_anios[2])
+    }
+    # Filtro de medios
+    if (!is.null(input$medios_seleccion) && !"Todos" %in% input$medios_seleccion) {
+      d <- d |> filter(as.character(fuente_principal) %in% input$medios_seleccion)
+    }
+    d
+  })
+  
+  # Reset para Medios
+  observeEvent(input$btn_reset_medios, {
+    updateSliderInput(session, "medios_anios", value = c(min(datos$year), max(datos$year)))
+    updateSelectizeInput(session, "medios_seleccion", selected = "Todos")
+    updateSelectInput(session, "medios_sub_event", selected = "Todos")
+    updateSelectInput(session, "medios_nivel_fatalidad", selected = "Todos")
+    updateCheckboxInput(session, "medios_incluir_otros", value = FALSE)
+  })
+  
+  # GRÁFICO 1: Sub-tipo de evento cubierto por medio (Corregido con filtro por event_type)
+  output$g1_medios_evento <- renderPlotly({
+    d <- datos_medios()
+    filtro_event <- input$medios_event_type
+    
+    # Aplicar el filtro de Event Type
+    if (!is.null(filtro_event) && filtro_event != "Todos") {
+      d <- d |> filter(as.character(event_type) == filtro_event)
+    }
+    
+    shiny::validate(shiny::need(nrow(d) > 0, "No hay datos para los filtros seleccionados."))
+    
+    # Limitamos a los TOP 15 medios para que el gráfico sea legible
+    medios_top <- d |>
+      count(fuente_principal, sort = TRUE) |>
+      slice_max(n, n = 15) |>
+      pull(fuente_principal)
+    
+    d <- d |> filter(fuente_principal %in% medios_top)
+    
+    # Agrupamos los subtipos en los 5 más frecuentes + "Otros" (para evitar saturaciones de color)
+    df_plot <- d |>
+      mutate(sub_event_agrupado = fct_lump_n(sub_event_type, n = 6)) |>
+      count(fuente_principal, sub_event_agrupado) |>
+      group_by(fuente_principal) |>
+      mutate(porcentaje = n / sum(n) * 100) |>
+      ungroup()
+    
+    # Generamos una paleta dinámica para los sub-tipos
+    paleta_sub_medios <- setNames(
+      colorRampPalette(c(col_teal, col_indigo, col_coral, col_amber, col_magenta, col_gris))(nlevels(df_plot$sub_event_agrupado)),
+      levels(df_plot$sub_event_agrupado)
+    )
+    
+    # Gráfico
+    p <- ggplot(df_plot, aes(x = fuente_principal, y = porcentaje, fill = sub_event_agrupado, 
+                             text = paste0(fuente_principal, "<br>", sub_event_agrupado, ": ", round(porcentaje, 1), "%"))) +
+      geom_bar(stat = "identity", position = "fill") +
+      scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+      scale_fill_manual(values = paleta_sub_medios, name = "Sub-tipo de evento") +
+      labs(y = "Porcentaje de la cobertura", x = NULL) +
+      coord_flip() +
+      tema_acled() +
+      theme(
+        axis.text.y = element_text(size = 11) # Aumentamos el tamaño de la letra del eje Y
+      )
+    
+    # Ajustamos los márgenes a la izquierda para que los nombres largos quepan
+    ggplotly(p, tooltip = "text") |>
+      layout(margin = list(l = 200)) |>
+      plotly_solo_tooltip()
+  })
+  
+  # GRÁFICO 2: Nivel de fatalidad por medio (Versión corregida con Top y conteos absolutos)
+  output$g2_medios_fatalidad <- renderPlotly({
+    d <- datos_medios()
+    filtro_nivel <- input$medios_nivel_fatalidad
+    
+    # CASO 1: Se selecciona "Todos"
+    if (filtro_nivel == "Todos") {
+      
+      df_plot <- d |>
+        filter(!is.na(nivel_fatalidades)) |>
+        count(fuente_principal, nivel_fatalidades)
+      
+      # Filtramos los 10 medios con más notas totales para que el eje Y sea legible
+      medios_top <- df_plot |>
+        group_by(fuente_principal) |>
+        summarise(total = sum(n), .groups = "drop") |>
+        slice_max(total, n = 10) |>
+        pull(fuente_principal)
+      
+      # Aplicamos el filtro y adicionamos la columna 'total' al df_plot para el reorder
+      df_plot <- df_plot |>
+        filter(fuente_principal %in% medios_top) |>
+        group_by(fuente_principal) |>
+        mutate(total = sum(n)) |>
+        ungroup()
+      
+      shiny::validate(shiny::need(nrow(df_plot) > 0, "No hay datos para los filtros seleccionados."))
+      
+      # Ahora 'total' existe dentro de df_plot y el gráfico no fallará
+      p <- ggplot(df_plot, aes(x = reorder(fuente_principal, -total), y = n, fill = nivel_fatalidades, 
+                               text = paste0(fuente_principal, "<br>", nivel_fatalidades, ": ", n, " notas"))) +
+        geom_bar(stat = "identity", position = "stack") +
+        scale_y_continuous(labels = comma) +
+        scale_fill_manual(values = paleta_nivel, name = "Nivel de fatalidad") +
+        labs(y = "Número de notas", x = "Medio de comunicación") +
+        coord_flip() +
+        tema_acled()
+      
+    } else {
+      # CASO 2: Se filtra un nivel específico
+      df_plot <- d |>
+        filter(!is.na(nivel_fatalidades), as.character(nivel_fatalidades) == filtro_nivel) |>
+        count(fuente_principal, name = "n")
+      
+      shiny::validate(shiny::need(nrow(df_plot) > 0, glue("No hay eventos con ese nivel de fatalidad para el periodo/medios seleccionados.")))
+      
+      # Mostramos el Top 15 de medios con más notas de ese nivel
+      df_plot <- df_plot |> slice_max(n, n = 15)
+      
+      # Cogemos el color de la paleta personalizada para el nivel seleccionado
+      color_filtrado <- paleta_nivel[[filtro_nivel]]
+      
+      p <- ggplot(df_plot, aes(x = reorder(fuente_principal, n), y = n, 
+                               text = paste0(fuente_principal, "<br>Notas con ", filtro_nivel, ": ", n))) +
+        geom_col(fill = color_filtrado) +
+        scale_y_continuous(labels = comma) +
+        labs(y = glue("Número de notas con fatalidad '{filtro_nivel}'"), x = "Medio de comunicación") +
+        coord_flip() +
+        tema_acled() +
+        theme(legend.position = "none")
+    }
+    
+    ggplotly(p, tooltip = "text") |> plotly_solo_tooltip()
+  })
+  
+  # GRÁFICO 3: Tipo de actor asociado por medio (Actor 1) - CORREGIDO
+  output$g3_medios_actor <- renderPlotly({
+    d <- datos_medios()
+    
+    # --- EXCLUIMOS "Otros Grupos" ---
+    d <- d |> filter(as.character(assoc_actor_1_tipo) != "Otros Grupos")
+    
+    shiny::validate(shiny::need(nrow(d) > 0, "No hay datos para los filtros seleccionados."))
+    
+    # --- LIMITAMOS A LOS TOP 15 MEDIOS (Para que el gráfico sea legible) ---
+    medios_top <- d |>
+      count(fuente_principal, sort = TRUE) |>
+      slice_max(n, n = 15) |>
+      pull(fuente_principal)
+    
+    d <- d |> filter(fuente_principal %in% medios_top)
+    
+    # Contamos y calculamos porcentaje
+    df_plot <- d |>
+      filter(!is.na(assoc_actor_1_tipo), assoc_actor_1_tipo != "") |>
+      count(fuente_principal, assoc_actor_1_tipo) |>
+      group_by(fuente_principal) |>
+      mutate(porcentaje = n / sum(n) * 100) |>
+      ungroup()
+    
+    # Crear una paleta dinámica
+    paleta_medios_actor <- hacer_paleta_dinamica(df_plot, assoc_actor_1_tipo, c(col_indigo, col_teal, col_coral, col_amber, col_magenta))
+    
+    # Gráfico con ajuste de texto en el eje Y
+    p <- ggplot(df_plot, aes(x = fuente_principal, y = porcentaje, fill = assoc_actor_1_tipo, text = paste0(fuente_principal, "<br>", assoc_actor_1_tipo, ": ", round(porcentaje, 1), "%"))) +
+      geom_bar(stat = "identity", position = "fill") +
+      scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+      scale_fill_manual(values = paleta_medios_actor, name = "Tipo de actor") +
+      labs(y = "Porcentaje de la cobertura", x = NULL) +
+      coord_flip() +
+      tema_acled() +
+      theme(
+        axis.text.y = element_text(size = 11) # Hacemos el texto del eje Y un poco más grande para que no choque
+      )
+    
+    # Ajustamos los márgenes del gráfico para que los nombres largos quepan
+    ggplotly(p, tooltip = "text") |>
+      layout(margin = list(l = 200)) |>
+      plotly_solo_tooltip()
   })
   
 }
